@@ -1,0 +1,41 @@
+{
+  "theme": "restoring-health-hope",
+  "generated": "2026-03-21",
+  "research_weights": {
+    "trends_2026": 60,
+    "theme_research": 25,
+    "user_preferences": 10,
+    "competitor_analysis": 5
+  },
+  "q1_audience": "Hospital partners + corporate donors",
+  "q2_competitors": ["stjude.org"],
+  "q3_conversion": "$100 = 1 student education program",
+  "q4_adjectives": ["Hope", "Dignity", "Community", "Waste-Free"],
+  "q5_hero": "Fixed signature glassmorphism — headline priority",
+  "q6_logo": "Locked — exact colors, top-left, never resize",
+  "q7_mobile_traffic": "70%",
+  "q8_load_target": "<1.5s (Core Web Vitals A grade)",
+  "q9_tone": "Hope + dignity, 10th-grade warmth, no AI clichés",
+  "q10_cta_style": "$100 = 1 student education program",
+  "q11_photos": "Elegant gradient placeholders only — no stock ever",
+  "q12_social_proof": "Real patient/student testimonials with names + placeholder photos",
+  "design_brief": {
+    "colors": {
+      "primary_blue": "#0070f3",
+      "emerald": "#10b981",
+      "sage": "#A8B5A2",
+      "background_gradient": "from-slate-950 via-blue-950/30 to-emerald-950"
+    },
+    "inspiration": "St. Jude — clean, emotional, trust-forward, bold mission headlines",
+    "hero": "fixed-signature-glassmorphism",
+    "cta": "$100 = 1 student education program",
+    "mobile_first": true,
+    "mobile_traffic": "70%",
+    "testimonials": "Named individuals with placeholder photo circles",
+    "stats_columns": 4,
+    "gallery_cards": 6
+  },
+  "nextjs_ready": "src/app/health-hope/page.tsx",
+  "live_url": "https://caresforu.com/health-hope",
+  "lighthouse_target": "95+"
+}
