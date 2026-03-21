@@ -1,5 +1,41 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+
+interface GalleryItem {
+  timestamp: number;
+  filename: string;
+  destination: string;
+  category: string;
+  caption: string;
+  platforms: string[];
+  published: string;
+}
+
 export default function GalleryPage() {
-  const campaigns = [
+  const [items, setItems] = useState<GalleryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadGalleryItems = async () => {
+      try {
+        // Fallback: Load from public/media-metadata using Next.js public folder
+        // In production, fetch from /api/gallery endpoint
+        const response = await fetch('/uploads/');
+        // For now, use hardcoded for demo
+        setItems([]);
+      } catch (error) {
+        console.error('Error loading gallery:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadGalleryItems();
+  }, []);
+
+  // Fallback if no items
+  const fallbackItems = [
     { name: "Student Education Program", image: "Education", impact: "500+ students supported" },
     { name: "Senior Nutrition Drive", image: "Nutrition", impact: "5,000+ meals delivered" },
     { name: "Women's Wellness Initiative", image: "Women", impact: "2,000+ women reached" },
@@ -24,18 +60,28 @@ export default function GalleryPage() {
       <section className="py-16 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {campaigns.map((campaign, idx) => (
+            {fallbackItems.map((item, idx) => (
               <div key={idx} className="bg-[#F5F5F5] rounded-xl overflow-hidden hover:shadow-lg transition">
                 <div className="h-64 bg-gradient-to-br from-[#E8F4F8] to-[#F0F8E8] flex items-center justify-center">
-                  <p className="text-gray-500 text-center font-bold">{campaign.image} Photo Placeholder</p>
+                  <p className="text-gray-500 text-center font-bold">{item.image} Photo Placeholder</p>
                 </div>
                 <div className="p-6">
-                  <h3 className="text-xl font-black text-[#1E5A96] mb-2">{campaign.name}</h3>
-                  <p className="text-[#7CB342] font-bold text-sm">{campaign.impact}</p>
+                  <h3 className="text-xl font-black text-[#1E5A96] mb-2">{item.name}</h3>
+                  <p className="text-[#7CB342] font-bold text-sm">{item.impact}</p>
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Uploaded Images Info */}
+      <section className="py-12 px-4 sm:px-6 bg-[#F5F5F5]">
+        <div className="max-w-7xl mx-auto text-center">
+          <p className="text-gray-600">
+            ✅ Gallery uploads via Discord bot are saved to: <code className="bg-white px-2 py-1 rounded">/public/uploads/</code>
+          </p>
+          <p className="text-gray-500 text-sm mt-2">Phase 2 will add dynamic loading and real-time updates</p>
         </div>
       </section>
     </main>

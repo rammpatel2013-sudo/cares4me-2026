@@ -66,7 +66,7 @@ export default function RootLayout({
         {/* Footer */}
         <footer className="bg-[#1E5A96] text-white py-16 mt-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-12 mb-12">
               <div>
                 <h3 className="text-2xl font-black mb-4">Care4ME</h3>
                 <p className="text-gray-100 text-sm leading-relaxed">Restoring Health, Renewing Hope One Step at a Time</p>
@@ -87,6 +87,26 @@ export default function RootLayout({
                   <li><a href="/volunteer" className="hover:text-[#7CB342] transition">Volunteer</a></li>
                   <li><a href="/partners" className="hover:text-[#7CB342] transition">Partner With Us</a></li>
                 </ul>
+              </div>
+              <div>
+                <h4 className="font-bold mb-4 text-[#7CB342]">Follow Us</h4>
+                <div className="flex flex-col gap-2 text-sm">
+                  <a href="https://www.instagram.com/care4medicalequipment/" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
+                    📷 Instagram
+                  </a>
+                  <a href="https://www.facebook.com/care4medicalequipment/" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
+                    👍 Facebook
+                  </a>
+                  <a href="https://www.tiktok.com/@care4medicalequipment" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
+                    🎵 TikTok
+                  </a>
+                  <a href="https://www.linkedin.com/company/care4me" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
+                    💼 LinkedIn
+                  </a>
+                  <a href="https://twitter.com/care4me" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
+                    𝕏 Twitter
+                  </a>
+                </div>
               </div>
               <div>
                 <h4 className="font-bold mb-4 text-[#7CB342]">Contact</h4>
