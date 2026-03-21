@@ -41,6 +41,8 @@ export default function RootLayout({
               <a href="/volunteer" className="text-gray-700 hover:text-[#2BA5D7] transition">Volunteer</a>
               <a href="/partners" className="text-gray-700 hover:text-[#2BA5D7] transition">Partners</a>
               <a href="/campaigns" className="text-gray-700 hover:text-[#2BA5D7] transition">Campaigns</a>
+              <a href="/impact-dashboard.tsx" className="text-gray-700 hover:text-[#2BA5D7] transition">Dashboard</a>
+              <a href="/blog.tsx" className="text-gray-700 hover:text-[#2BA5D7] transition">Blog</a>
               <a
                 href="/donate"
                 className="bg-[#2BA5D7] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-[#1E5A96] transition"
@@ -81,11 +83,21 @@ export default function RootLayout({
                 </ul>
               </div>
               <div>
+                <h4 className="font-bold mb-4 text-[#7CB342]">Resources</h4>
+                <ul className="space-y-2 text-sm">
+                  <li><a href="/impact-dashboard.tsx" className="hover:text-[#7CB342] transition">Dashboard</a></li>
+                  <li><a href="/blog.tsx" className="hover:text-[#7CB342] transition">Blog</a></li>
+                  <li><a href="/faq.tsx" className="hover:text-[#7CB342] transition">FAQ</a></li>
+                  <li><a href="/transparency.tsx" className="hover:text-[#7CB342] transition">Transparency</a></li>
+                </ul>
+              </div>
+              <div>
                 <h4 className="font-bold mb-4 text-[#7CB342]">Get Involved</h4>
                 <ul className="space-y-2 text-sm">
                   <li><a href="/donate" className="hover:text-[#7CB342] transition">Donate</a></li>
                   <li><a href="/volunteer" className="hover:text-[#7CB342] transition">Volunteer</a></li>
                   <li><a href="/partners" className="hover:text-[#7CB342] transition">Partner With Us</a></li>
+                  <li><a href="/contact.tsx" className="hover:text-[#7CB342] transition">Contact</a></li>
                 </ul>
               </div>
               <div>
