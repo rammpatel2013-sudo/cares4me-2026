@@ -1,7 +1,3 @@
-'use client';
-
-import { AnimatedCard, AnimatedStatBox } from './animations';
-
 export default function HomePage() {
   return (
     <main className="bg-white">
@@ -47,10 +43,22 @@ export default function HomePage() {
       <section className="py-16 px-4 sm:px-6 bg-white">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <AnimatedStatBox value="847+" label="Students Educated" color="#2BA5D7" />
-            <AnimatedStatBox value="$127K" label="Raised & Deployed" color="#7CB342" />
-            <AnimatedStatBox value="18" label="Active Programs" color="#1E5A96" />
-            <AnimatedStatBox value="100%" label="To Programs" color="#2BA5D7" />
+            <div className="text-center">
+              <div className="text-4xl font-black text-[#2BA5D7] mb-2">847+</div>
+              <p className="text-gray-700 font-medium">Students Educated</p>
+            </div>
+            <div className="text-center">
+              <div className="text-4xl font-black text-[#7CB342] mb-2">$127K</div>
+              <p className="text-gray-700 font-medium">Raised & Deployed</p>
+            </div>
+            <div className="text-center">
+              <div className="text-4xl font-black text-[#1E5A96] mb-2">18</div>
+              <p className="text-gray-700 font-medium">Active Programs</p>
+            </div>
+            <div className="text-center">
+              <div className="text-4xl font-black text-[#2BA5D7] mb-2">100%</div>
+              <p className="text-gray-700 font-medium">To Programs</p>
+            </div>
           </div>
         </div>
       </section>

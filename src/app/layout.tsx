@@ -1,3 +1,4 @@
+import Navbar from './Navbar';
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -23,52 +24,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased scroll-smooth`}
-    >
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased scroll-smooth`}>
       <body className="min-h-full flex flex-col bg-white text-gray-900">
-        {/* Navbar */}
-        <nav className="fixed top-0 w-full z-50 bg-white border-b border-gray-100 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-            <a href="/" className="text-2xl font-black text-[#2BA5D7]">
-              Care4ME
-            </a>
-            <div className="hidden md:flex items-center gap-8 text-sm font-medium">
-              <a href="/" className="text-gray-700 hover:text-[#2BA5D7] transition">Home</a>
-              <a href="/team" className="text-gray-700 hover:text-[#2BA5D7] transition">Team</a>
-              <a href="/gallery" className="text-gray-700 hover:text-[#2BA5D7] transition">Gallery</a>
-              <a href="/volunteer" className="text-gray-700 hover:text-[#2BA5D7] transition">Volunteer</a>
-              <a href="/partners" className="text-gray-700 hover:text-[#2BA5D7] transition">Partners</a>
-              <a href="/campaigns" className="text-gray-700 hover:text-[#2BA5D7] transition">Campaigns</a>
-              <a
-                href="/donate"
-                className="bg-[#2BA5D7] text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-[#1E5A96] transition"
-              >
-                Donate
-              </a>
-            </div>
-            {/* Mobile menu button */}
-            <div className="md:hidden">
-              <a
-                href="/donate"
-                className="bg-[#2BA5D7] text-white px-4 py-2 rounded-lg font-semibold hover:bg-[#1E5A96] transition text-sm"
-              >
-                Donate
-              </a>
-            </div>
-          </div>
-        </nav>
-
-        {/* Main Content */}
+        <Navbar />
         <main className="pt-20 flex-grow">{children}</main>
-
-        {/* Footer */}
         <footer className="bg-[#1E5A96] text-white py-16 mt-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-12 mb-12">
               <div>
-                <h3 className="text-2xl font-black mb-4">Care4ME</h3>
+                <div className="flex items-center gap-2 mb-4">
+                  <img src="/care4me.jpg" alt="Care4ME Logo" className="h-8 w-8" />
+                  <h3 className="text-2xl font-black">Care4ME</h3>
+                </div>
                 <p className="text-gray-100 text-sm leading-relaxed">Restoring Health, Renewing Hope One Step at a Time</p>
               </div>
               <div>

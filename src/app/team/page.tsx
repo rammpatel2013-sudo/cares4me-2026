@@ -1,24 +1,38 @@
+'use client';
+
+import { AnimatedCard } from '../animations';
+
 export default function TeamPage() {
   const teamMembers = [
     {
-      name: "Dr. Priya Patel",
-      title: "Executive Director",
-      bio: "10+ years in healthcare NGO leadership. Passionate about preventive health education in underserved communities.",
+      name: "Aamya",
+      title: "Team Member",
+      bio: "Dedicated to restoring health and making a difference in underserved communities.",
+      image: "/images/aamya.jpg"
     },
     {
-      name: "James Williams",
-      title: "Program Manager",
-      bio: "Hospital partnership specialist. Bridges healthcare institutions with community health needs.",
+      name: "Hanna",
+      title: "Team Member",
+      bio: "Committed to ensuring every donation reaches those who need it most.",
+      image: "/images/hanna.jpg"
     },
     {
-      name: "Maria Santos",
-      title: "Community Outreach Lead",
-      bio: "Connects directly with communities. Ensures every program reflects real needs and cultural values.",
+      name: "Laila",
+      title: "Team Member",
+      bio: "Passionate about building partnerships and expanding our impact globally.",
+      image: "/images/laila.jpg"
     },
     {
-      name: "David Chen",
-      title: "Finance & Operations",
-      bio: "Ensures 100% transparency. Every dollar is tracked and accounted for in our programs.",
+      name: "Simryn",
+      title: "Team Member",
+      bio: "Focused on transparency and trust-based relationships with our partners.",
+      image: "/images/simryn.jpg"
+    },
+    {
+      name: "Unnati",
+      title: "Team Member",
+      bio: "Working to bring medical equipment to those who need it the most.",
+      image: "/images/unnati.jpg"
     },
   ];
 
@@ -37,14 +51,22 @@ export default function TeamPage() {
       {/* Team Members */}
       <section className="py-16 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
             {teamMembers.map((member, idx) => (
-              <div key={idx} className="bg-[#F5F5F5] rounded-xl p-8 text-center">
-                <div className="w-32 h-32 bg-gradient-to-br from-[#2BA5D7] to-[#7CB342] rounded-full mx-auto mb-6" />
-                <h3 className="text-xl font-black text-[#1E5A96] mb-1">{member.name}</h3>
-                <p className="text-[#7CB342] font-bold text-sm mb-4">{member.title}</p>
-                <p className="text-gray-700 text-sm leading-relaxed">{member.bio}</p>
-              </div>
+              <AnimatedCard key={idx} delay={idx * 0.1}>
+                <div className="bg-[#F5F5F5] rounded-xl overflow-hidden hover:shadow-lg transition">
+                  <img
+                    src={member.image}
+                    alt={member.name}
+                    className="w-full h-64 object-cover"
+                  />
+                  <div className="p-6 text-center">
+                    <h3 className="text-xl font-black text-[#1E5A96] mb-1">{member.name}</h3>
+                    <p className="text-[#7CB342] font-bold text-sm mb-4">{member.title}</p>
+                    <p className="text-gray-700 text-sm leading-relaxed">{member.bio}</p>
+                  </div>
+                </div>
+              </AnimatedCard>
             ))}
           </div>
         </div>

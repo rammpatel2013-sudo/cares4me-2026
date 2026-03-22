@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "setup": "node setup-all-pages.js",
+    "setup-pages": "node create-pages.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -10,8 +12,10 @@
     "bot": "node src/lib/discord-bot-interactive.js"
   },
   "dependencies": {
+    "axios": "^1.13.6",
     "discord.js": "^14.25.1",
-    "dotenv": "^17.3.1",
+    "dotenv": "^16.6.1",
+    "form-data": "^4.0.5",
     "framer-motion": "^12.38.0",
     "next": "16.2.0",
     "react": "19.2.4",
