@@ -33,7 +33,7 @@ export default function RootLayout({
             <div className="grid grid-cols-1 md:grid-cols-5 gap-12 mb-12">
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <img src="/care4me.jpg" alt="Care4ME Logo" className="h-8 w-8" />
+                  <img src="/loggoo.jpg" alt="Care4ME Logo" className="h-8 w-8" />
                   <h3 className="text-2xl font-black">Care4ME</h3>
                 </div>
                 <p className="text-gray-100 text-sm leading-relaxed">Restoring Health, Renewing Hope One Step at a Time</p>

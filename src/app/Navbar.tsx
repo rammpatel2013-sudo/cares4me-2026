@@ -39,7 +39,7 @@ export default function Navbar() {
     }}>
       {/* Big Logo on Left, moved right */}
       <Link href="/" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', marginRight: '1.5rem' }}>
-        <img src="/care4me.jpg" alt="Care4ME Logo" style={{ height: 200, width: 200, objectFit: 'contain', borderRadius: 16 }} />
+        <img src="/loggoo.jpg" alt="Care4ME Logo" style={{ height: 200, width: 200, objectFit: 'contain', borderRadius: 16 }} />
       </Link>
 
       {/* Main Links */}
