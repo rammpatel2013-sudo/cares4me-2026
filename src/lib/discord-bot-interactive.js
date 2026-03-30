@@ -315,8 +315,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   } catch (error) {
     console.error('Error handling interaction:', error);
-    if (!interaction.replied) {
-      await interaction.reply('❌ An error occurred.');
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply('❌ An error occurred.');
+      } else if (interaction.deferred) {
+        await interaction.editReply('❌ An error occurred.');
+      }
+    } catch (replyError) {
+      console.error('Could not send error reply:', replyError.message);
     }
   }
 });
