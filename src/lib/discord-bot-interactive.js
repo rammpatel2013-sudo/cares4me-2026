@@ -150,14 +150,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('destination_')) {
       try {
-        const timestamp = parseInt(interaction.customId.split('_')[1]);
+        console.log(`🔍 Destination handler triggered: customId=${interaction.customId}`);
+        const parts = interaction.customId.split('_');
+        console.log(`   Split result: [${parts.join(', ')}]`);
+        const timestamp = parseInt(parts[1]);
+        console.log(`   Parsed timestamp: ${timestamp}`);
+        console.log(`   Session map size: ${uploadSessions.size}`);
+        console.log(`   Available sessions: ${Array.from(uploadSessions.keys()).join(', ')}`);
+        
         const session = uploadSessions.get(timestamp);
+        console.log(`   Session found: ${session ? 'YES' : 'NO'}`);
 
         if (!session) {
+          console.log(`❌ Session ${timestamp} not found!`);
           await safeReply(interaction, '❌ Session expired. Please upload again.');
           return;
         }
 
+        console.log(`✅ Session ${timestamp} retrieved, destination set to: ${interaction.values[0]}`);
         session.destination = interaction.values[0];
 
         // Show category menu based on destination
@@ -210,7 +220,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
           .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
 
+        console.log(`   About to call interaction.update() with ${categoryOptions.length} category options`);
         await interaction.update({ embeds: [embed], components: [categoryRow] });
+        console.log(`✅ Destination step completed successfully!`);
       } catch (err) {
         if (!isUnknownInteractionError(err)) {
           console.error('Destination handler error:', err.message);
