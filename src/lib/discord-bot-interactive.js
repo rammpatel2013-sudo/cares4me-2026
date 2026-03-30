@@ -350,22 +350,35 @@ async function showConfirmation(interaction, timestamp, session) {
       { name: '📱 Social Media', value: session.platforms.length ? session.platforms.join(', ') : 'None', inline: false }
     );
 
-  await interaction.reply({ embeds: [embed], components: [confirmRow], ephemeral: true });
+  await safeReply(interaction, { embeds: [embed], components: [confirmRow], ephemeral: true });
+}
+
+// Safe reply helper — never throws [40060]
+async function safeReply(interaction, payload) {
+  try {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(typeof payload === 'string' ? { content: payload, ephemeral: true } : { ...payload, ephemeral: true });
+    } else {
+      await interaction.reply(typeof payload === 'string' ? { content: payload, ephemeral: true } : payload);
+    }
+  } catch (err) {
+    console.error('safeReply failed:', err.message);
+  }
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isButton()) return;
 
-  if (interaction.customId.startsWith('confirm_')) {
-    const timestamp = parseInt(interaction.customId.split('_')[1]);
-    const session = uploadSessions.get(timestamp);
+  try {
+    if (interaction.customId.startsWith('confirm_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[1]);
+      const session = uploadSessions.get(timestamp);
 
-    if (!session) {
-      await interaction.reply('❌ Session expired.');
-      return;
-    }
+      if (!session) {
+        await safeReply(interaction, '❌ Session expired. Please re-upload the image.');
+        return;
+      }
 
-    try {
       // Save metadata
       const metadata = {
         timestamp,
@@ -395,31 +408,35 @@ client.on(Events.InteractionCreate, async (interaction) => {
           { name: '📊 What happens next:', value: 'Image will appear on website within 1 minute.\nSocial media posts queued for publishing.' }
         );
 
-      await interaction.reply({ embeds: [successEmbed], ephemeral: true });
+      await safeReply(interaction, { embeds: [successEmbed], ephemeral: true });
 
       // Clean up session after 1 hour
       setTimeout(() => uploadSessions.delete(timestamp), 3600000);
-    } catch (error) {
-      console.error('Error publishing:', error);
-      await interaction.reply('❌ Error publishing image.');
     }
-  }
 
-  if (interaction.customId.startsWith('cancel_')) {
-    const timestamp = parseInt(interaction.customId.split('_')[1]);
-    uploadSessions.delete(timestamp);
+    if (interaction.customId.startsWith('cancel_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[1]);
+      uploadSessions.delete(timestamp);
 
-    const embed = new EmbedBuilder()
-      .setColor('#FF0000')
-      .setTitle('❌ Upload Cancelled')
-      .setDescription('Image has been deleted.');
+      const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('❌ Upload Cancelled')
+        .setDescription('Image has been deleted.');
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+      await safeReply(interaction, { embeds: [embed], ephemeral: true });
+    }
+  } catch (error) {
+    console.error('Error in confirm/cancel handler:', error);
+    await safeReply(interaction, '❌ An error occurred. Please try again.');
   }
 });
 
 client.on(Events.ClientError, (error) => {
   console.error('Discord client error:', error);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection (bot will NOT crash):', reason);
 });
 
 client.login(DISCORD_TOKEN);
