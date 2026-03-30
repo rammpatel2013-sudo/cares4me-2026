@@ -15,7 +15,7 @@ const {
   MessageFlags
 } = require('discord.js');
 const { createWriteStream } = require('fs');
-const { mkdir, writeFile } = require('fs/promises');
+const { mkdir, writeFile, readdir, unlink, readFile } = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
 
@@ -26,12 +26,10 @@ const sharp = require('sharp');
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
 const MEDIA_CHANNEL_ID = process.env.DISCORD_MEDIA_CHANNEL_ID || '1484953248560447703';
 
-// Use APP_DIR for DigitalOcean deployment
 const BASE_DIR = process.env.APP_DIR || process.cwd();
 const PUBLIC_MEDIA_DIR = path.join(BASE_DIR, 'public', 'uploads');
 const METADATA_DIR = path.join(BASE_DIR, 'public', 'media-metadata');
 
-// Session timeout (15 minutes)
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -57,7 +55,6 @@ const client = new Client({
   ]
 });
 
-// Store upload sessions
 const uploadSessions = new Map();
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -136,7 +133,6 @@ client.once(Events.ClientReady, async () => {
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('');
 
-  // Ensure directories exist
   try {
     await mkdir(PUBLIC_MEDIA_DIR, { recursive: true });
     await mkdir(METADATA_DIR, { recursive: true });
@@ -147,12 +143,169 @@ client.once(Events.ClientReady, async () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MESSAGE HANDLER - Image Upload Detection
+// COMMANDS - !help, !list, !delete, !addcategory
 // ═══════════════════════════════════════════════════════════════════════════════
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.channelId !== MEDIA_CHANNEL_ID) return;
   if (message.author.bot) return;
+  if (!message.content.startsWith('!')) return;
+
+  const args = message.content.slice(1).trim().split(/\s+/);
+  const command = args[0].toLowerCase();
+
+  // !help
+  if (command === 'help') {
+    const embed = new EmbedBuilder()
+      .setColor(0x2BA5D7)
+      .setTitle('📚 Care4ME Bot Commands')
+      .addFields(
+        { name: '📸 Upload Image', value: 'Just drop an image in this channel', inline: false },
+        { name: '!help', value: 'Show this help message', inline: true },
+        { name: '!list', value: 'Show all uploaded files', inline: true },
+        { name: '!delete all', value: 'Delete ALL uploads', inline: true },
+        { name: '!delete [filename]', value: 'Delete a specific file', inline: true },
+        { name: '!addcategory [name]', value: 'Add new gallery category', inline: true }
+      )
+      .setFooter({ text: 'Made for Care4ME' });
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !list
+  if (command === 'list') {
+    try {
+      const files = await readdir(METADATA_DIR).catch(() => []);
+      
+      if (files.length === 0) {
+        await message.reply('📭 No uploads yet. Drop an image to get started!');
+        return;
+      }
+
+      let fileList = '';
+      for (const file of files.slice(0, 15)) {
+        try {
+          const data = JSON.parse(await readFile(path.join(METADATA_DIR, file), 'utf8'));
+          fileList += `• **${data.filename}**\n  └ ${data.destination} → ${data.category}\n`;
+        } catch (e) {}
+      }
+      
+      if (files.length > 15) {
+        fileList += `\n... and ${files.length - 15} more`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle(`📁 Uploaded Files (${files.length})`)
+        .setDescription(fileList || 'No files found')
+        .setFooter({ text: 'Use !delete [filename] to remove a file' });
+      await message.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error('List error:', error);
+      await message.reply('❌ Error listing files');
+    }
+    return;
+  }
+
+  // !delete
+  if (command === 'delete') {
+    const target = args.slice(1).join(' ').toLowerCase();
+    
+    if (!target) {
+      await message.reply('❓ Usage: `!delete all` or `!delete [filename]`');
+      return;
+    }
+
+    try {
+      if (target === 'all') {
+        const uploads = await readdir(PUBLIC_MEDIA_DIR).catch(() => []);
+        for (const file of uploads) {
+          await unlink(path.join(PUBLIC_MEDIA_DIR, file)).catch(() => {});
+        }
+        
+        const metadata = await readdir(METADATA_DIR).catch(() => []);
+        for (const file of metadata) {
+          await unlink(path.join(METADATA_DIR, file)).catch(() => {});
+        }
+        
+        await message.reply(`🗑️ **Deleted all ${uploads.length} files!** Gallery is now empty.`);
+        console.log('🗑️ All uploads deleted by', message.author.username);
+        return;
+      }
+
+      const metadataFiles = await readdir(METADATA_DIR).catch(() => []);
+      let deleted = false;
+
+      for (const file of metadataFiles) {
+        try {
+          const data = JSON.parse(await readFile(path.join(METADATA_DIR, file), 'utf8'));
+          
+          if (data.filename.toLowerCase().includes(target)) {
+            await unlink(path.join(METADATA_DIR, file)).catch(() => {});
+            
+            const timestamp = data.timestamp;
+            await unlink(path.join(PUBLIC_MEDIA_DIR, data.filename)).catch(() => {});
+            await unlink(path.join(PUBLIC_MEDIA_DIR, `${timestamp}-web.webp`)).catch(() => {});
+            await unlink(path.join(PUBLIC_MEDIA_DIR, `${timestamp}-thumb.webp`)).catch(() => {});
+            
+            await message.reply(`🗑️ **Deleted:** ${data.filename}`);
+            console.log('🗑️ Deleted', data.filename, 'by', message.author.username);
+            deleted = true;
+            break;
+          }
+        } catch (e) {}
+      }
+
+      if (!deleted) {
+        await message.reply(`❌ File not found: "${target}"\nUse \`!list\` to see all files.`);
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      await message.reply('❌ Error deleting file');
+    }
+    return;
+  }
+
+  // !addcategory [name] - Add new gallery category
+  if (command === 'addcategory') {
+    const categoryName = args.slice(1).join(' ');
+    
+    if (!categoryName) {
+      await message.reply('❓ Usage: `!addcategory Summer Picnic 2026`');
+      return;
+    }
+
+    // Store in a categories file
+    const categoriesPath = path.join(METADATA_DIR, '_categories.json');
+    let categories = [];
+    
+    try {
+      const data = await readFile(categoriesPath, 'utf8');
+      categories = JSON.parse(data);
+    } catch (e) {
+      categories = [];
+    }
+
+    if (!categories.includes(categoryName)) {
+      categories.push(categoryName);
+      await writeFile(categoriesPath, JSON.stringify(categories, null, 2));
+      await message.reply(`✅ **Added category:** "${categoryName}"\n\nThis will now appear in the Gallery dropdown when uploading!`);
+      console.log('📁 New category added:', categoryName, 'by', message.author.username);
+    } else {
+      await message.reply(`⚠️ Category "${categoryName}" already exists.`);
+    }
+    return;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// IMAGE UPLOAD HANDLER
+// ═══════════════════════════════════════════════════════════════════════════════
+
+client.on(Events.MessageCreate, async (message) => {
+  if (message.channelId !== MEDIA_CHANNEL_ID) return;
+  if (message.author.bot) return;
+  if (message.content.startsWith('!')) return; // Skip commands
 
   const images = [...message.attachments.values()].filter(
     att => att.contentType?.startsWith('image')
@@ -166,14 +319,12 @@ client.on(Events.MessageCreate, async (message) => {
     for (const attachment of images) {
       console.log(`   Processing: ${attachment.name}`);
 
-      // Download image
       const response = await fetch(attachment.url);
       if (!response.ok) throw new Error(`Download failed: ${response.status}`);
       
       const buffer = Buffer.from(await response.arrayBuffer());
       const timestamp = Date.now();
 
-      // Save original
       const baseFilename = `${timestamp}-${attachment.name}`;
       const filepath = path.join(PUBLIC_MEDIA_DIR, baseFilename);
       
@@ -181,13 +332,11 @@ client.on(Events.MessageCreate, async (message) => {
       writeStream.write(buffer);
       writeStream.end();
 
-      // Create web-optimized version
       await sharp(buffer)
         .resize(1200, 800, { fit: 'inside', withoutEnlargement: true })
         .webp({ quality: 85 })
         .toFile(path.join(PUBLIC_MEDIA_DIR, `${timestamp}-web.webp`));
 
-      // Create thumbnail
       await sharp(buffer)
         .resize(400, 300, { fit: 'cover' })
         .webp({ quality: 80 })
@@ -195,10 +344,8 @@ client.on(Events.MessageCreate, async (message) => {
 
       console.log(`   ✅ Saved: ${baseFilename}`);
 
-      // Auto-caption from message or filename
       const autoCaption = message.content.trim() || generateCaption(attachment.name);
 
-      // Store session
       uploadSessions.set(timestamp, {
         timestamp,
         filename: baseFilename,
@@ -209,15 +356,17 @@ client.on(Events.MessageCreate, async (message) => {
         destination: null,
         category: null,
         platforms: [],
+        // Team-specific fields
+        name: null,
+        role: null,
+        bio: null,
         userId: message.author.id,
         username: message.author.username,
         messageId: message.id
       });
 
-      // Schedule cleanup
       scheduleSessionCleanup(timestamp);
 
-      // Show destination menu
       const destinationRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`dest_${timestamp}`)
@@ -250,7 +399,7 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// INTERACTION HANDLER - All menus, buttons, modals in ONE listener
+// INTERACTION HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -269,7 +418,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       session.destination = interaction.values[0];
       console.log(`   📂 Destination: ${session.destination}`);
 
-      // Build category options based on destination
+      // Load custom categories if they exist
+      let customCategories = [];
+      try {
+        const categoriesPath = path.join(METADATA_DIR, '_categories.json');
+        const data = await readFile(categoriesPath, 'utf8');
+        customCategories = JSON.parse(data);
+      } catch (e) {}
+
       let categoryOptions = [];
       
       if (session.destination === 'gallery') {
@@ -278,7 +434,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           { label: '❤️ Success Stories', value: 'Success Stories' },
           { label: '🎉 Event: Food Drive 2026', value: 'Event: Food Drive 2026' },
           { label: '🎉 Event: Spring Health Fair', value: 'Event: Spring Health Fair' },
-          { label: '🎉 Event: Winter Formal', value: 'Event: Winter Formal' }
+          { label: '🎉 Event: Winter Formal', value: 'Event: Winter Formal' },
+          // Add custom categories
+          ...customCategories.map(cat => ({ label: `🏷️ ${cat}`, value: cat }))
         ];
       } else if (session.destination === 'campaign') {
         categoryOptions = [
@@ -306,7 +464,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         new StringSelectMenuBuilder()
           .setCustomId(`cat_${timestamp}`)
           .setPlaceholder('🏷️ Select a category')
-          .addOptions(categoryOptions)
+          .addOptions(categoryOptions.slice(0, 25)) // Discord max 25 options
       );
 
       const embed = new EmbedBuilder()
@@ -334,27 +492,109 @@ client.on(Events.InteractionCreate, async (interaction) => {
       session.category = interaction.values[0];
       console.log(`   🏷️ Category: ${session.category}`);
 
-      // Show caption edit modal
-      const modal = new ModalBuilder()
-        .setCustomId(`caption_${timestamp}`)
-        .setTitle('Edit Caption')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('caption_input')
-              .setLabel('Caption (describe this image)')
-              .setStyle(TextInputStyle.Paragraph)
-              .setValue(session.autoCaption)
-              .setMaxLength(500)
-              .setRequired(true)
-          )
-        );
+      // TEAM DESTINATION - Show special modal with Name, Role, Bio
+      if (session.destination === 'team') {
+        const modal = new ModalBuilder()
+          .setCustomId(`team_info_${timestamp}`)
+          .setTitle('Team Member Info')
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('team_name')
+                .setLabel('Name')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('e.g., John Smith')
+                .setRequired(true)
+                .setMaxLength(100)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('team_role')
+                .setLabel('Role / Title')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('e.g., Volunteer Coordinator')
+                .setRequired(true)
+                .setMaxLength(100)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('team_bio')
+                .setLabel('Brief Introduction')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Write a short bio about this team member...')
+                .setRequired(true)
+                .setMaxLength(500)
+            )
+          );
 
-      await interaction.showModal(modal);
+        await interaction.showModal(modal);
+      } else {
+        // OTHER DESTINATIONS - Show regular caption modal
+        const modal = new ModalBuilder()
+          .setCustomId(`caption_${timestamp}`)
+          .setTitle('Edit Caption')
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('caption_input')
+                .setLabel('Caption (describe this image)')
+                .setStyle(TextInputStyle.Paragraph)
+                .setValue(session.autoCaption)
+                .setMaxLength(500)
+                .setRequired(true)
+            )
+          );
+
+        await interaction.showModal(modal);
+      }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CAPTION MODAL SUBMIT
+    // TEAM INFO MODAL SUBMIT
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('team_info_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = uploadSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired. Please upload again.');
+      }
+
+      session.name = interaction.fields.getTextInputValue('team_name');
+      session.role = interaction.fields.getTextInputValue('team_role');
+      session.bio = interaction.fields.getTextInputValue('team_bio');
+      session.userCaption = `${session.name} - ${session.role}`;
+
+      console.log(`   👤 Team Member: ${session.name} (${session.role})`);
+
+      // Skip social media selection for team, go straight to confirmation
+      const confirmRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`confirm_${timestamp}`)
+          .setLabel('✅ Add to Team Page')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`cancel_${timestamp}`)
+          .setLabel('❌ Cancel')
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle('📋 Confirm Team Member')
+        .addFields(
+          { name: '👤 Name', value: session.name, inline: true },
+          { name: '💼 Role', value: session.role, inline: true },
+          { name: '🏷️ Category', value: session.category, inline: true },
+          { name: '📝 Bio', value: session.bio, inline: false }
+        )
+        .setFooter({ text: 'Click "Add to Team Page" to publish' });
+
+      await safeReply(interaction, { embeds: [embed], components: [confirmRow] });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CAPTION MODAL SUBMIT (for non-team destinations)
     // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isModalSubmit() && interaction.customId.startsWith('caption_')) {
       const timestamp = parseInt(interaction.customId.split('_')[1]);
@@ -367,7 +607,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       session.userCaption = interaction.fields.getTextInputValue('caption_input');
       console.log(`   ✏️ Caption: "${session.userCaption}"`);
 
-      // Show platform selection buttons
       const platformRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`plat_instagram_${timestamp}`)
@@ -417,7 +656,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return await safeReply(interaction, '❌ Session expired. Please upload again.');
       }
 
-      // Set platforms
       if (platform === 'all') {
         session.platforms = ['instagram', 'facebook', 'tiktok'];
       } else if (platform === 'skip') {
@@ -428,7 +666,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       console.log(`   📱 Platforms: ${session.platforms.join(', ') || 'none'}`);
 
-      // Show confirmation
       const confirmRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`confirm_${timestamp}`)
@@ -465,30 +702,36 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return await safeReply(interaction, '❌ Session expired. Please upload again.');
       }
 
-      // Defer reply to prevent timeout during file write
       await safeDeferReply(interaction);
 
-      // Create metadata
+      // Create metadata - include team fields if present
       const metadata = {
         timestamp: session.timestamp,
         filename: session.filename,
         destination: session.destination,
         category: session.category,
         caption: session.userCaption,
-        platforms: session.platforms,
+        platforms: session.platforms || [],
         published: new Date().toISOString(),
-        uploadedBy: session.username
+        uploadedBy: session.username,
+        // Team-specific fields
+        name: session.name || null,
+        role: session.role || null,
+        bio: session.bio || null
       };
 
-      // Save metadata
       const metadataPath = path.join(METADATA_DIR, `${timestamp}.json`);
       await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
 
       console.log(`\n✅ PUBLISHED: ${session.filename}`);
       console.log(`   → Destination: ${session.destination}`);
       console.log(`   → Category: ${session.category}`);
-      console.log(`   → Caption: "${session.userCaption}"`);
-      console.log(`   → Platforms: ${session.platforms.join(', ') || 'website only'}`);
+      if (session.name) {
+        console.log(`   → Team Member: ${session.name} (${session.role})`);
+      } else {
+        console.log(`   → Caption: "${session.userCaption}"`);
+      }
+      console.log(`   → Platforms: ${session.platforms?.join(', ') || 'website only'}`);
 
       const successEmbed = new EmbedBuilder()
         .setColor(0x7CB342)
@@ -496,13 +739,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .addFields(
           { name: '📂 Location', value: session.destination, inline: true },
           { name: '🏷️ Category', value: session.category, inline: true },
-          { name: '📱 Shared to', value: session.platforms.length ? session.platforms.join(', ') : 'Website only', inline: true }
+          { name: '📱 Shared to', value: session.platforms?.length ? session.platforms.join(', ') : 'Website only', inline: true }
         )
         .setFooter({ text: 'Image will appear on website within 1 minute' });
 
-      await interaction.editReply({ embeds: [successEmbed], components: [] });
+      await safeReply(interaction, { embeds: [successEmbed], components: [] });
 
-      // Clean up session
       uploadSessions.delete(timestamp);
     }
 
