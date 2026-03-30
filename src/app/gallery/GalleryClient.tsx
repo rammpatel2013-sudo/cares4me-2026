@@ -66,12 +66,11 @@ export default function GalleryClient({ items }: { items: MediaMetadata[] }) {
                 {/* Image Container */}
                 <div className="relative h-[320px] bg-gray-100 overflow-hidden shrink-0">
                   <img 
-                    src={`/uploads/${item.timestamp}-web.webp`} 
+                    src={`/api/media?file=${item.timestamp}-web.webp`}
                     alt={item.caption || 'Community Impact'}
                     className="object-cover w-full h-full transform group-hover:scale-105 transition-transform duration-700 ease-in-out"
                     onError={(e) => {
-                      // Fallback to original image if webp wasn't generated
-                      (e.target as HTMLImageElement).src = `/uploads/${item.filename}`;
+                      (e.target as HTMLImageElement).src = `/api/media?file=${item.filename}`;
                     }}
                   />
                   {/* Gradient Overlay */}

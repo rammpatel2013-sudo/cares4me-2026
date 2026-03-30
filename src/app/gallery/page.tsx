@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   title: 'Gallery | Care4ME',
   description: 'View the impact of Care4ME through our community gallery and events.',
 };
+  title: 'Gallery | Care4ME',
+  description: 'View the impact of Care4ME through our community gallery and events.',
+};
 
 export default async function GalleryPage() {
   // Fetch metadata securely on the server

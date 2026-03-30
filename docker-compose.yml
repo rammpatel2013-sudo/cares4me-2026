@@ -9,8 +9,8 @@ services:
       - "3000:3000"
     # We map the public folders so your Synology safely stores the images natively
     volumes:
-      - ./public/uploads:/app/public/uploads
-      - ./public/media-metadata:/app/public/media-metadata
+      - ./public/uploads:/app/public/uploads:consistent
+      - ./public/media-metadata:/app/public/media-metadata:consistent
     env_file:
       - .env.local
 
