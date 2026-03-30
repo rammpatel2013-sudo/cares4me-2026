@@ -220,8 +220,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
           .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
 
-        console.log(`   About to call interaction.update() with ${categoryOptions.length} category options`);
-        await interaction.update({ embeds: [embed], components: [categoryRow] });
+        console.log(`   About to call interaction.reply() with ${categoryOptions.length} category options`);
+        await interaction.reply({ embeds: [embed], components: [categoryRow], flags: MessageFlags.Ephemeral });
         console.log(`✅ Destination step completed successfully!`);
       } catch (err) {
         if (!isUnknownInteractionError(err)) {
