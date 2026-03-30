@@ -152,34 +152,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         console.log(`🔍 Destination handler triggered: customId=${interaction.customId}`);
         
-        // Acknowledge immediately to extend token lifetime
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-          console.log(`   ✅ Deferred reply to extend timeout`);
-        }
-        
+        // Parse and prepare EVERYTHING synchronously before any API call
         const parts = interaction.customId.split('_');
-        console.log(`   Split result: [${parts.join(', ')}]`);
         const timestamp = parseInt(parts[1]);
-        console.log(`   Parsed timestamp: ${timestamp}`);
-        console.log(`   Session map size: ${uploadSessions.size}`);
-        console.log(`   Available sessions: ${Array.from(uploadSessions.keys()).join(', ')}`);
-        
         const session = uploadSessions.get(timestamp);
-        console.log(`   Session found: ${session ? 'YES' : 'NO'}`);
 
         if (!session) {
           console.log(`❌ Session ${timestamp} not found!`);
+          // Use safeReply which handles 10062 gracefully
           await safeReply(interaction, '❌ Session expired. Please upload again.');
           return;
         }
 
-        console.log(`✅ Session ${timestamp} retrieved, destination set to: ${interaction.values[0]}`);
         session.destination = interaction.values[0];
+        console.log(`✅ Got session, destination=${session.destination}`);
 
-        // Show category menu based on destination
+        // Build all category options synchronously
         let categoryOptions = [];
-
         if (session.destination === 'campaign') {
           categoryOptions = [
             { label: '🎓 Education', value: 'education' },
@@ -189,9 +178,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             { label: '🏥 Emergency Relief', value: 'emergency' }
           ];
         } else if (session.destination === 'gallery') {
-          // [HOW TO ADD NEW EVENTS]
-          // Simply add a new object to this array below!
-          // The bot supports up to 25 items in this dropdown.
           categoryOptions = [
             { label: '📸 General Gallery', value: 'General Gallery' },
             { label: '❤️ Success Stories', value: 'Success Stories' },
@@ -227,21 +213,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
           .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
 
-        console.log(`   About to call editReply() with ${categoryOptions.length} category options`);
-        await interaction.editReply({ embeds: [embed], components: [categoryRow] });
-        console.log(`✅ Destination step completed successfully!`);
+        // NOW make the API call with everything ready
+        console.log(`   Sending category menu with reply()...`);
+        await interaction.reply({ embeds: [embed], components: [categoryRow], flags: MessageFlags.Ephemeral });
+        console.log(`✅ Category menu sent successfully!`);
       } catch (err) {
-        console.error(`❌ Destination handler FAILED with error:`, {
+        console.error(`❌ Destination handler FAILED:`, {
           message: err.message,
           code: err.code,
-          status: err.status,
-          stack: err.stack
+          status: err.status
         });
         try {
-          if (interaction.deferred) {
-            await interaction.editReply('❌ Error processing destination choice. Please try again.');
-          } else if (!interaction.replied) {
-            await interaction.reply({ content: '❌ Error processing destination choice. Please try again.', flags: MessageFlags.Ephemeral });
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: '❌ Error processing destination. Please try again.', flags: MessageFlags.Ephemeral });
           }
         } catch (replyErr) {
           console.error('Failed to send error reply:', replyErr.message);
