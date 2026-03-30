@@ -12,7 +12,8 @@ const {
   TextInputBuilder,
   TextInputStyle,
   EmbedBuilder,
-  ComponentType
+  ComponentType,
+  MessageFlags
 } = require('discord.js');
 const { createWriteStream } = require('fs');
 const { mkdir, writeFile } = require('fs/promises');
@@ -148,11 +149,13 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('destination_')) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
       const timestamp = parseInt(interaction.customId.split('_')[1]);
       const session = uploadSessions.get(timestamp);
 
       if (!session) {
-        await interaction.reply('❌ Session expired. Please upload again.');
+        await safeReply(interaction, '❌ Session expired. Please upload again.');
         return;
       }
 
@@ -208,7 +211,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
         .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
 
-      await interaction.reply({ embeds: [embed], components: [categoryRow], ephemeral: true });
+      await interaction.editReply({ embeds: [embed], components: [categoryRow] });
     }
 
     // Handle category selection
@@ -217,7 +220,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const session = uploadSessions.get(timestamp);
 
       if (!session) {
-        await interaction.reply('❌ Session expired.');
+        await safeReply(interaction, '❌ Session expired.');
         return;
       }
 
@@ -243,11 +246,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // Handle caption modal submission
     if (interaction.isModalSubmit() && interaction.customId.startsWith('caption_')) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
       const timestamp = parseInt(interaction.customId.split('_')[1]);
       const session = uploadSessions.get(timestamp);
 
       if (!session) {
-        await interaction.reply('❌ Session expired.');
+        await safeReply(interaction, '❌ Session expired.');
         return;
       }
 
@@ -285,7 +290,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(`**Caption:** "${session.userCaption}"`)
           .addFields({ name: '📂 Category', value: session.category, inline: false });
 
-        await interaction.reply({ embeds: [embed], components: [platformRow], ephemeral: true });
+        await interaction.editReply({ embeds: [embed], components: [platformRow] });
       } else {
         // Skip social for team uploads, go to confirmation
         await showConfirmation(interaction, timestamp, session);
@@ -299,7 +304,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const session = uploadSessions.get(sessionTimestamp);
 
       if (!session) {
-        await interaction.reply('❌ Session expired.');
+        await safeReply(interaction, '❌ Session expired.');
         return;
       }
 
@@ -314,16 +319,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await showConfirmation(interaction, sessionTimestamp, session);
     }
   } catch (error) {
-    console.error('Error handling interaction:', error);
-    try {
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply('❌ An error occurred.');
-      } else if (interaction.deferred) {
-        await interaction.editReply('❌ An error occurred.');
-      }
-    } catch (replyError) {
-      console.error('Could not send error reply:', replyError.message);
+    if (isUnknownInteractionError(error)) {
+      console.warn('Interaction expired before response (10062).');
+      return;
     }
+
+    console.error('Error handling interaction:', error);
+    await safeReply(interaction, '❌ An error occurred.');
   }
 });
 
@@ -350,20 +352,30 @@ async function showConfirmation(interaction, timestamp, session) {
       { name: '📱 Social Media', value: session.platforms.length ? session.platforms.join(', ') : 'None', inline: false }
     );
 
-  await safeReply(interaction, { embeds: [embed], components: [confirmRow], ephemeral: true });
+  await safeReply(interaction, { embeds: [embed], components: [confirmRow] });
 }
 
 // Safe reply helper — never throws [40060]
 async function safeReply(interaction, payload) {
   try {
+    const basePayload = typeof payload === 'string'
+      ? { content: payload, flags: MessageFlags.Ephemeral }
+      : { ...payload, flags: payload.flags ?? MessageFlags.Ephemeral };
+
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(typeof payload === 'string' ? { content: payload, ephemeral: true } : { ...payload, ephemeral: true });
+      await interaction.followUp(basePayload);
     } else {
-      await interaction.reply(typeof payload === 'string' ? { content: payload, ephemeral: true } : payload);
+      await interaction.reply(basePayload);
     }
   } catch (err) {
-    console.error('safeReply failed:', err.message);
+    if (!isUnknownInteractionError(err)) {
+      console.error('safeReply failed:', err.message);
+    }
   }
+}
+
+function isUnknownInteractionError(error) {
+  return error && (error.code === 10062 || error.message === 'Unknown interaction' || /Unknown interaction/.test(String(error)));
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -408,7 +420,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           { name: '📊 What happens next:', value: 'Image will appear on website within 1 minute.\nSocial media posts queued for publishing.' }
         );
 
-      await safeReply(interaction, { embeds: [successEmbed], ephemeral: true });
+      await safeReply(interaction, { embeds: [successEmbed] });
 
       // Clean up session after 1 hour
       setTimeout(() => uploadSessions.delete(timestamp), 3600000);
@@ -423,9 +435,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setTitle('❌ Upload Cancelled')
         .setDescription('Image has been deleted.');
 
-      await safeReply(interaction, { embeds: [embed], ephemeral: true });
+      await safeReply(interaction, { embeds: [embed] });
     }
   } catch (error) {
+    if (isUnknownInteractionError(error)) {
+      console.warn('Confirm/cancel interaction expired before response (10062).');
+      return;
+    }
+
     console.error('Error in confirm/cancel handler:', error);
     await safeReply(interaction, '❌ An error occurred. Please try again.');
   }
