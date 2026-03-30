@@ -149,151 +149,165 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('destination_')) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const timestamp = parseInt(interaction.customId.split('_')[1]);
+        const session = uploadSessions.get(timestamp);
 
-      const timestamp = parseInt(interaction.customId.split('_')[1]);
-      const session = uploadSessions.get(timestamp);
+        if (!session) {
+          await safeReply(interaction, '❌ Session expired. Please upload again.');
+          return;
+        }
 
-      if (!session) {
-        await safeReply(interaction, '❌ Session expired. Please upload again.');
-        return;
+        session.destination = interaction.values[0];
+
+        // Show category menu based on destination
+        let categoryOptions = [];
+
+        if (session.destination === 'campaign') {
+          categoryOptions = [
+            { label: '🎓 Education', value: 'education' },
+            { label: '⚕️ Healthcare', value: 'healthcare' },
+            { label: '👴 Elderly Care', value: 'elderly' },
+            { label: '👶 Children', value: 'children' },
+            { label: '🏥 Emergency Relief', value: 'emergency' }
+          ];
+        } else if (session.destination === 'gallery') {
+          // [HOW TO ADD NEW EVENTS]
+          // Simply add a new object to this array below!
+          // The bot supports up to 25 items in this dropdown.
+          categoryOptions = [
+            { label: '📸 General Gallery', value: 'General Gallery' },
+            { label: '❤️ Success Stories', value: 'Success Stories' },
+            { label: '🎉 Event: Food Drive 2026', value: 'Event: Food Drive 2026' },
+            { label: '🎉 Event: Spring Health Fair', value: 'Event: Spring Health Fair' },
+            { label: '🎉 Event: Winter Formal', value: 'Event: Winter Formal' }
+          ];
+        } else if (session.destination === 'team') {
+          categoryOptions = [
+            { label: '👔 Staff', value: 'staff' },
+            { label: '🤝 Volunteers', value: 'volunteers' },
+            { label: '🏆 Board Members', value: 'board' }
+          ];
+        } else if (session.destination === 'social') {
+          categoryOptions = [
+            { label: '📢 Announcement', value: 'announcement' },
+            { label: '💡 Tip/Info', value: 'tip' },
+            { label: '❤️ Story', value: 'story' }
+          ];
+        }
+
+        const categoryRow = new ActionRowBuilder()
+          .addComponents(
+            new StringSelectMenuBuilder()
+              .setCustomId(`category_${timestamp}`)
+              .setPlaceholder('Select category')
+              .addOptions(categoryOptions)
+          );
+
+        const embed = new EmbedBuilder()
+          .setColor('#7CB342')
+          .setTitle('📂 Select Category')
+          .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
+          .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
+
+        await interaction.update({ embeds: [embed], components: [categoryRow] });
+      } catch (err) {
+        if (!isUnknownInteractionError(err)) {
+          console.error('Destination handler error:', err.message);
+        }
       }
-
-      session.destination = interaction.values[0];
-
-      // Show category menu based on destination
-      let categoryOptions = [];
-
-      if (session.destination === 'campaign') {
-        categoryOptions = [
-          { label: '🎓 Education', value: 'education' },
-          { label: '⚕️ Healthcare', value: 'healthcare' },
-          { label: '👴 Elderly Care', value: 'elderly' },
-          { label: '👶 Children', value: 'children' },
-          { label: '🏥 Emergency Relief', value: 'emergency' }
-        ];
-      } else if (session.destination === 'gallery') {
-        // [HOW TO ADD NEW EVENTS]
-        // Simply add a new object to this array below!
-        // The bot supports up to 25 items in this dropdown.
-        categoryOptions = [
-          { label: '📸 General Gallery', value: 'General Gallery' },
-          { label: '❤️ Success Stories', value: 'Success Stories' },
-          { label: '🎉 Event: Food Drive 2026', value: 'Event: Food Drive 2026' },
-          { label: '🎉 Event: Spring Health Fair', value: 'Event: Spring Health Fair' },
-          { label: '🎉 Event: Winter Formal', value: 'Event: Winter Formal' }
-        ];
-      } else if (session.destination === 'team') {
-        categoryOptions = [
-          { label: '👔 Staff', value: 'staff' },
-          { label: '🤝 Volunteers', value: 'volunteers' },
-          { label: '🏆 Board Members', value: 'board' }
-        ];
-      } else if (session.destination === 'social') {
-        categoryOptions = [
-          { label: '📢 Announcement', value: 'announcement' },
-          { label: '💡 Tip/Info', value: 'tip' },
-          { label: '❤️ Story', value: 'story' }
-        ];
-      }
-
-      const categoryRow = new ActionRowBuilder()
-        .addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(`category_${timestamp}`)
-            .setPlaceholder('Select category')
-            .addOptions(categoryOptions)
-        );
-
-      const embed = new EmbedBuilder()
-        .setColor('#7CB342')
-        .setTitle('📂 Select Category')
-        .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
-        .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
-
-      await interaction.editReply({ embeds: [embed], components: [categoryRow] });
     }
 
     // Handle category selection
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('category_')) {
-      const timestamp = parseInt(interaction.customId.split('_')[1]);
-      const session = uploadSessions.get(timestamp);
+      try {
+        const timestamp = parseInt(interaction.customId.split('_')[1]);
+        const session = uploadSessions.get(timestamp);
 
-      if (!session) {
-        await safeReply(interaction, '❌ Session expired.');
-        return;
+        if (!session) {
+          await safeReply(interaction, '❌ Session expired.');
+          return;
+        }
+
+        session.category = interaction.values[0];
+
+        // Show caption editing modal
+        const modal = new ModalBuilder()
+          .setCustomId(`caption_${timestamp}`)
+          .setTitle('Edit Caption')
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('caption_text')
+                .setLabel('Caption')
+                .setStyle(TextInputStyle.Paragraph)
+                .setValue(session.autoCaption)
+                .setMaxLength(500)
+            )
+          );
+
+        await interaction.showModal(modal);
+      } catch (err) {
+        if (!isUnknownInteractionError(err)) {
+          console.error('Category handler error:', err.message);
+        }
       }
-
-      session.category = interaction.values[0];
-
-      // Show caption editing modal
-      const modal = new ModalBuilder()
-        .setCustomId(`caption_${timestamp}`)
-        .setTitle('Edit Caption')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('caption_text')
-              .setLabel('Caption')
-              .setStyle(TextInputStyle.Paragraph)
-              .setValue(session.autoCaption)
-              .setMaxLength(500)
-          )
-        );
-
-      await interaction.showModal(modal);
     }
 
     // Handle caption modal submission
     if (interaction.isModalSubmit() && interaction.customId.startsWith('caption_')) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        const timestamp = parseInt(interaction.customId.split('_')[1]);
+        const session = uploadSessions.get(timestamp);
 
-      const timestamp = parseInt(interaction.customId.split('_')[1]);
-      const session = uploadSessions.get(timestamp);
+        if (!session) {
+          await interaction.reply({ content: '❌ Session expired.', flags: MessageFlags.Ephemeral });
+          return;
+        }
 
-      if (!session) {
-        await safeReply(interaction, '❌ Session expired.');
-        return;
-      }
+        session.userCaption = interaction.fields.getTextInputValue('caption_text');
 
-      session.userCaption = interaction.fields.getTextInputValue('caption_text');
+        // Show social media options
+        if (session.destination === 'social' || session.destination !== 'team') {
+          const platformRow = new ActionRowBuilder()
+            .addComponents(
+              new ButtonBuilder()
+                .setCustomId(`platform_instagram_${timestamp}`)
+                .setLabel('📷 Instagram')
+                .setStyle(ButtonStyle.Primary),
+              new ButtonBuilder()
+                .setCustomId(`platform_facebook_${timestamp}`)
+                .setLabel('👍 Facebook')
+                .setStyle(ButtonStyle.Primary),
+              new ButtonBuilder()
+                .setCustomId(`platform_tiktok_${timestamp}`)
+                .setLabel('🎵 TikTok')
+                .setStyle(ButtonStyle.Primary),
+              new ButtonBuilder()
+                .setCustomId(`platform_all_${timestamp}`)
+                .setLabel('✅ All Platforms')
+                .setStyle(ButtonStyle.Success),
+              new ButtonBuilder()
+                .setCustomId(`platform_skip_${timestamp}`)
+                .setLabel('⏭️ Skip Social')
+                .setStyle(ButtonStyle.Secondary)
+            );
 
-      // Show social media options
-      if (session.destination === 'social' || session.destination !== 'team') {
-        const platformRow = new ActionRowBuilder()
-          .addComponents(
-            new ButtonBuilder()
-              .setCustomId(`platform_instagram_${timestamp}`)
-              .setLabel('📷 Instagram')
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-              .setCustomId(`platform_facebook_${timestamp}`)
-              .setLabel('👍 Facebook')
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-              .setCustomId(`platform_tiktok_${timestamp}`)
-              .setLabel('🎵 TikTok')
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-              .setCustomId(`platform_all_${timestamp}`)
-              .setLabel('✅ All Platforms')
-              .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-              .setCustomId(`platform_skip_${timestamp}`)
-              .setLabel('⏭️ Skip Social')
-              .setStyle(ButtonStyle.Secondary)
-          );
+          const embed = new EmbedBuilder()
+            .setColor('#2BA5D7')
+            .setTitle('📱 Social Media Platforms')
+            .setDescription(`**Caption:** "${session.userCaption}"`)
+            .addFields({ name: '📂 Category', value: session.category, inline: false });
 
-        const embed = new EmbedBuilder()
-          .setColor('#2BA5D7')
-          .setTitle('📱 Social Media Platforms')
-          .setDescription(`**Caption:** "${session.userCaption}"`)
-          .addFields({ name: '📂 Category', value: session.category, inline: false });
-
-        await interaction.editReply({ embeds: [embed], components: [platformRow] });
-      } else {
-        // Skip social for team uploads, go to confirmation
-        await showConfirmation(interaction, timestamp, session);
+          await interaction.reply({ embeds: [embed], components: [platformRow], flags: MessageFlags.Ephemeral });
+        } else {
+          // Skip social for team uploads, go to confirmation
+          await showConfirmation(interaction, timestamp, session);
+        }
+      } catch (err) {
+        if (!isUnknownInteractionError(err)) {
+          console.error('Caption handler error:', err.message);
+        }
       }
     }
 
