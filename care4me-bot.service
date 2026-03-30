@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/care4me
+WorkingDirectory=/root/cares4me-2026
 ExecStart=/usr/bin/node discord-bot.js
 Restart=always
 RestartSec=10
@@ -15,7 +15,7 @@ SyslogIdentifier=care4me-bot
 
 # Environment variables
 Environment=NODE_ENV=production
-EnvironmentFile=/root/care4me/.env.local
+EnvironmentFile=/root/cares4me-2026/.env.local
 
 # Graceful shutdown
 KillMode=mixed

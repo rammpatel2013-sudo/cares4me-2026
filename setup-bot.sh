@@ -13,7 +13,7 @@ echo "════════════════════════�
 echo ""
 
 # Configuration
-APP_DIR="${APP_DIR:-/root/care4me}"
+APP_DIR="${APP_DIR:-/root/cares4me-2026}"
 SERVICE_NAME="care4me-bot"
 
 # Colors
@@ -79,7 +79,7 @@ DISCORD_BOT_TOKEN=your_bot_token_here
 DISCORD_MEDIA_CHANNEL_ID=1484953248560447703
 
 # App Directory (optional, defaults to current directory)
-APP_DIR=/root/care4me
+APP_DIR=/root/cares4me-2026
 EOF
     print_warning "Please edit .env.local and add your DISCORD_BOT_TOKEN"
     echo ""
