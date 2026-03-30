@@ -150,24 +150,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('destination_')) {
       try {
-        console.log(`🔍 Destination handler triggered: customId=${interaction.customId}`);
-        
-        // Parse and prepare EVERYTHING synchronously before any API call
         const parts = interaction.customId.split('_');
         const timestamp = parseInt(parts[1]);
         const session = uploadSessions.get(timestamp);
 
         if (!session) {
-          console.log(`❌ Session ${timestamp} not found!`);
-          // Use safeReply which handles 10062 gracefully
           await safeReply(interaction, '❌ Session expired. Please upload again.');
           return;
         }
 
         session.destination = interaction.values[0];
-        console.log(`✅ Got session, destination=${session.destination}`);
 
-        // Build all category options synchronously
+        // Build category options
         let categoryOptions = [];
         if (session.destination === 'campaign') {
           categoryOptions = [
@@ -213,22 +207,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
           .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
 
-        // NOW make the API call with everything ready
-        console.log(`   Sending category menu with reply()...`);
         await interaction.reply({ embeds: [embed], components: [categoryRow], flags: MessageFlags.Ephemeral });
-        console.log(`✅ Category menu sent successfully!`);
       } catch (err) {
-        console.error(`❌ Destination handler FAILED:`, {
-          message: err.message,
-          code: err.code,
-          status: err.status
-        });
-        try {
-          if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: '❌ Error processing destination. Please try again.', flags: MessageFlags.Ephemeral });
-          }
-        } catch (replyErr) {
-          console.error('Failed to send error reply:', replyErr.message);
+        if (err.code !== 10062) {
+          console.error('Destination handler error:', err.message);
         }
       }
     }
