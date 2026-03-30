@@ -9,7 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "bot": "node src/lib/discord-bot-interactive.js"
+    "bot": "node discord-bot-interactive.js"
   },
   "dependencies": {
     "axios": "^1.13.6",

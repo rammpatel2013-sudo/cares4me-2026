@@ -1,0 +1,25 @@
+[Unit]
+Description=Care4ME Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/care4me
+ExecStart=/usr/bin/node discord-bot.js
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=care4me-bot
+
+# Environment variables
+Environment=NODE_ENV=production
+EnvironmentFile=/root/care4me/.env.local
+
+# Graceful shutdown
+KillMode=mixed
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,134 @@
+===========================================
+   Care4ME DigitalOcean Droplet Setup Guide
+===========================================
+
+This guide contains all commands needed to set up your server.
+Copy and run each command individually on your server.
+
+PREREQUISITES:
+- Your Droplet IP address from DigitalOcean
+- SSH key added to DigitalOcean
+- Project code pushed to GitHub
+
+===========================================
+STEP 1: Connect to Server
+===========================================
+ssh root@YOUR_DROPLET_IP
+(Replace YOUR_DROPLET_IP with your actual IP address)
+
+===========================================
+STEP 2: System Update
+===========================================
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y curl wget git htop ufw
+
+===========================================
+STEP 3: Firewall Setup
+===========================================
+sudo ufw allow ssh
+sudo ufw allow 80
+sudo ufw allow 443
+sudo ufw enable
+sudo ufw status
+
+===========================================
+STEP 4: Install Node.js
+===========================================
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node --version
+npm --version
+
+===========================================
+STEP 5: Install PM2
+===========================================
+sudo npm install -g pm2
+
+===========================================
+STEP 6: Clone Project
+===========================================
+git clone https://github.com/yourusername/cares4me.git
+cd cares4me
+npm install
+
+===========================================
+STEP 7: Environment Setup
+===========================================
+nano .env.local
+(Add this content, replace with your actual token):
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+
+Save with: Ctrl+X, then Y, then Enter
+
+===========================================
+STEP 8: Build Application
+===========================================
+npm run build
+
+===========================================
+STEP 9: Nginx Setup
+===========================================
+sudo apt install -y nginx
+sudo nano /etc/nginx/sites-available/cares4me
+
+PASTE THIS CONFIGURATION (replace YOUR_DROPLET_IP):
+server {
+    listen 80;
+    server_name YOUR_DROPLET_IP;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+Save with: Ctrl+X, then Y, then Enter
+
+Then run:
+sudo ln -s /etc/nginx/sites-available/cares4me /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+
+===========================================
+STEP 10: Start Services
+===========================================
+pm2 start npm --name "cares4me-web" -- start
+pm2 start npm --name "cares4me-bot" -- run bot
+pm2 save
+pm2 startup
+
+===========================================
+STEP 11: Verify Setup
+===========================================
+pm2 status
+pm2 logs cares4me-web --lines 10
+pm2 logs cares4me-bot --lines 10
+
+===========================================
+TEST YOUR SITE
+===========================================
+Open browser: http://YOUR_DROPLET_IP
+
+===========================================
+TROUBLESHOOTING
+===========================================
+Check services: pm2 status
+View web logs: pm2 logs cares4me-web
+View bot logs: pm2 logs cares4me-bot
+Check Nginx: sudo systemctl status nginx
+Check ports: netstat -tlnp | grep :3000
+
+===========================================
+FUTURE: Social Media Integration
+===========================================
+When ready to add social media posting:
+npm install twitter-api-v2 facebook-node-sdk
+
+Then modify discord-bot.ts to include social media posting logic.
