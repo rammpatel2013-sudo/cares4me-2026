@@ -231,14 +231,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.editReply({ embeds: [embed], components: [categoryRow] });
         console.log(`✅ Destination step completed successfully!`);
       } catch (err) {
-        console.error(`❌ Destination handler FAILED:`, {
+        console.error(`❌ Destination handler FAILED with error:`, {
           message: err.message,
           code: err.code,
-          status: err.status
+          status: err.status,
+          stack: err.stack
         });
-        if (!isUnknownInteractionError(err)) {
-          // Still try safe reply even if main handler failed
-          await safeReply(interaction, '❌ Error processing destination.');
+        try {
+          if (interaction.deferred) {
+            await interaction.editReply('❌ Error processing destination choice. Please try again.');
+          } else if (!interaction.replied) {
+            await interaction.reply({ content: '❌ Error processing destination choice. Please try again.', flags: MessageFlags.Ephemeral });
+          }
+        } catch (replyErr) {
+          console.error('Failed to send error reply:', replyErr.message);
         }
       }
     }
