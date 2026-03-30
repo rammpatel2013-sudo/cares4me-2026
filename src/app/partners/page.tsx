@@ -51,9 +51,9 @@ export default function PartnersPage() {
                     </li>
                   ))}
                 </ul>
-                <button className="w-full bg-[#2BA5D7] text-white font-bold py-3 rounded-lg hover:bg-[#1E5A96] transition">
-                  Inquire
-                </button>
+                <a href="/contact-us" className="w-full block text-center bg-[#2BA5D7] text-white font-bold py-3 rounded-lg hover:bg-[#1E5A96] transition">
+                  Contact Us
+                </a>
               </div>
             ))}
           </div>
@@ -81,7 +81,7 @@ export default function PartnersPage() {
           <h2 className="text-4xl font-black mb-6">Ready to Partner?</h2>
           <p className="text-xl mb-8 text-gray-100">Let's talk about how we can work together to create real impact.</p>
           <a
-            href="mailto:info@caresforu.com"
+            href="/contact-us"
             className="bg-[#7CB342] text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-[#6BA032] transition inline-block"
           >
             Contact Us

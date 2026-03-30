@@ -170,10 +170,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
           { label: '🏥 Emergency Relief', value: 'emergency' }
         ];
       } else if (session.destination === 'gallery') {
+        // [HOW TO ADD NEW EVENTS]
+        // Simply add a new object to this array below!
+        // The bot supports up to 25 items in this dropdown.
         categoryOptions = [
-          { label: '📸 General', value: 'general' },
-          { label: '🎉 Events', value: 'events' },
-          { label: '❤️ Success Stories', value: 'stories' }
+          { label: '📸 General Gallery', value: 'General Gallery' },
+          { label: '❤️ Success Stories', value: 'Success Stories' },
+          { label: '🎉 Event: Food Drive 2026', value: 'Event: Food Drive 2026' },
+          { label: '🎉 Event: Spring Health Fair', value: 'Event: Spring Health Fair' },
+          { label: '🎉 Event: Winter Formal', value: 'Event: Winter Formal' }
         ];
       } else if (session.destination === 'team') {
         categoryOptions = [
