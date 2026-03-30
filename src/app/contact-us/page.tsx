@@ -37,7 +37,7 @@ export default function ContactPage() {
             <div className="bg-[#F5F5F5] p-8 rounded-xl text-center">
               <div className="text-3xl mb-4">📧</div>
               <h3 className="font-bold text-[#1E5A96] mb-2">Email</h3>
-              <p className="text-gray-600"><a href="mailto:cae4medicalequipment@gmail.com" className="hover:text-[#2BA5D7]">cae4medicalequipment@gmail.com</a></p>
+              <p className="text-gray-600"><a href="mailto:cae4medicalequipment@gmail.com" className="hover:text-[#2BA5D7]">care4medicalequipment@gmail.com</a></p>
             </div>
           </AnimatedCard>
           <AnimatedCard delay={0.1}>

@@ -57,28 +57,35 @@ export default function RootLayout({
               </div>
               <div>
                 <h4 className="font-bold mb-4 text-[#7CB342]">Follow Us</h4>
-                <div className="flex flex-col gap-2 text-sm">
-                  <a href="https://www.instagram.com/care4medicalequipment/" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
-                    📷 Instagram
+                <div className="flex flex-col space-y-2 text-sm">
+                  <a href="https://www.instagram.com/care4medicalequipment/" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition flex items-center gap-2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+                    Instagram
                   </a>
-                  <a href="https://www.facebook.com/care4medicalequipment/" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
-                    👍 Facebook
+                  <a href="https://www.facebook.com/care4medicalequipment/" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition flex items-center gap-2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path></svg>
+                    Facebook
                   </a>
-                  <a href="https://www.tiktok.com/@care4medicalequipment" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
-                    🎵 TikTok
+                  <a href="https://www.tiktok.com/@care4medicalequipment" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition flex items-center gap-2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path></svg>
+                    TikTok
                   </a>
-                  <a href="https://www.linkedin.com/company/care4me" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
-                    💼 LinkedIn
+                  <a href="https://www.linkedin.com/company/care4me" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition flex items-center gap-2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path><rect x="2" y="9" width="4" height="12"></rect><circle cx="4" cy="4" r="2"></circle></svg>
+                    LinkedIn
                   </a>
-                  <a href="https://twitter.com/care4me" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition">
-                    𝕏 Twitter
+                  <a href="https://twitter.com/care4me" target="_blank" rel="noopener noreferrer" className="hover:text-[#7CB342] transition flex items-center gap-2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/></svg>
+                    Twitter
                   </a>
                 </div>
               </div>
               <div>
                 <h4 className="font-bold mb-4 text-[#7CB342]">Contact</h4>
-                <p className="text-sm text-gray-100">Email: info@caresforu.com</p>
-                <p className="text-sm text-gray-100">Phone: (555) 123-4567</p>
+                <div className="text-sm text-gray-100">
+  <div>Email: <a href="mailto:care4medicalequipment@gmail.com" className="underline hover:text-[#7CB342]">care4medicalequipment@gmail.com</a></div>
+  <div>Phone: (609) 367-4603</div>
+</div>
               </div>
             </div>
             <div className="border-t border-white/20 pt-8 text-center text-sm text-gray-200">

@@ -31,5 +31,20 @@ Last updated: 2026-03-21
    - Brief: research/health-hope-brief.json
    - Page: src/app/health-hope/page.tsx
 
+## PROJECT PROGRESS (as of 2026-03-22)
+
+### Key Achievements
+- Discord bot upgraded to discord.js v14, runs with `npm run bot`, processes image uploads in real time.
+- .env.local configured with Discord bot token and webhook.
+- Next.js frontend runs locally, logo image issues fixed (now using `/loggoo.jpg`).
+- Public folder contains all required assets.
+- Clarified Discord bot must run continuously; Vercel deploys only frontend.
+- Provided git commit/push instructions for Vercel deployment.
+
+### Next Steps
+- Integrate Discord bot uploads with Google Sheets for metadata.
+- Update gallery to fetch/filter images from Google Sheets.
+- Consider background/auto-start for Discord bot.
+
 ## NEXT THEME
 - Awaiting rating + Love/Change + next theme from user

@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: care4me-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    # We map the public folders so your Synology safely stores the images natively
+    volumes:
+      - ./public/uploads:/app/public/uploads:consistent
+      - ./public/media-metadata:/app/public/media-metadata:consistent
+    env_file:
+      - .env.local
+
+  bot:
+    build: .
+    container_name: care4me-bot
+    restart: unless-stopped
+    # Override the default command to start the Discord Bot instead of the website
+    command: npm run bot
+    # The bot shares the exact same folders as the website!
+    volumes:
+      - ./public/uploads:/app/public/uploads
+      - ./public/media-metadata:/app/public/media-metadata
+    env_file:
+      - .env.local
