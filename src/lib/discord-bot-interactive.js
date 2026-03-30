@@ -151,6 +151,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('destination_')) {
       try {
         console.log(`🔍 Destination handler triggered: customId=${interaction.customId}`);
+        
+        // Acknowledge immediately to extend token lifetime
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+          console.log(`   ✅ Deferred reply to extend timeout`);
+        }
+        
         const parts = interaction.customId.split('_');
         console.log(`   Split result: [${parts.join(', ')}]`);
         const timestamp = parseInt(parts[1]);
@@ -220,12 +227,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(`Destination: **${session.destination.toUpperCase()}**`)
           .addFields({ name: '✏️ Caption (auto-generated)', value: `"${session.autoCaption}"` });
 
-        console.log(`   About to call interaction.reply() with ${categoryOptions.length} category options`);
-        await interaction.reply({ embeds: [embed], components: [categoryRow], flags: MessageFlags.Ephemeral });
+        console.log(`   About to call editReply() with ${categoryOptions.length} category options`);
+        await interaction.editReply({ embeds: [embed], components: [categoryRow] });
         console.log(`✅ Destination step completed successfully!`);
       } catch (err) {
+        console.error(`❌ Destination handler FAILED:`, {
+          message: err.message,
+          code: err.code,
+          status: err.status
+        });
         if (!isUnknownInteractionError(err)) {
-          console.error('Destination handler error:', err.message);
+          // Still try safe reply even if main handler failed
+          await safeReply(interaction, '❌ Error processing destination.');
         }
       }
     }
