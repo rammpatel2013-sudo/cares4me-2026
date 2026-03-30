@@ -32,15 +32,8 @@ export async function getMediaByDestination(destination: string): Promise<MediaM
 
     const files = await fs.readdir(metadataDir);
     const jsonFiles = files.filter(f => f.endsWith('.json'));
-<<<<<<< HEAD
-    
-    const mediaItems: MediaMetadata[] = [];
-    
-=======
 
     const mediaItems: MediaMetadata[] = [];
-
->>>>>>> 8b4d54bf1d1afde204cfc096de0ab82a93027812
     for (const file of jsonFiles) {
       const filePath = path.join(metadataDir, file);
       const fileContents = await fs.readFile(filePath, 'utf8');
@@ -61,8 +54,6 @@ export async function getMediaByDestination(destination: string): Promise<MediaM
     return [];
   }
 }
-<<<<<<< HEAD
-=======
 
 export async function getMediaByCategory(category: string): Promise<MediaMetadata[]> {
   if (noStore) noStore();
