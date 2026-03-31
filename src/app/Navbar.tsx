@@ -22,101 +22,111 @@ const moreLinks = [
 ];
 
 export default function Navbar() {
-  const [open, setOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   return (
-    <nav style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-      padding: '1rem 22vw', // move 2vw left
-      background: '#fff',
-      borderBottom: '1px solid #e5e7eb',
-      position: 'sticky',
-      top: 0,
-      zIndex: 50,
-      gap: '2.5rem',
-    }}>
-      {/* Big Logo on Left, moved right */}
-      <Link href="/" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', marginRight: '1.5rem' }}>
-        <img src="/loggoo.jpg" alt="Care4ME Logo" style={{ height: 200, width: 200, objectFit: 'contain', borderRadius: 16 }} />
-      </Link>
-
-      {/* Main Links */}
-      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-        {mainLinks.map(link => (
-          <Link key={link.href} href={link.href} style={{
-            color: '#1E5A96', // dark blue from logo
-            textDecoration: 'none',
-            fontWeight: 700,
-            fontFamily: 'Geist, Arial, Helvetica, sans-serif',
-            fontSize: '1.25rem',
-            padding: '0.5rem 1.25rem',
-            borderRadius: 8,
-            transition: 'background 0.2s, color 0.2s',
-            lineHeight: 1.5,
-            letterSpacing: '0.01em',
-          }}>
-            {link.label}
+    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between py-2">
+          
+          {/* Logo */}
+          <Link href="/" className="flex-shrink-0">
+            <img 
+              src="/loggoo.jpg" 
+              alt="Care4ME Logo" 
+              className="h-[120px] w-[120px] md:h-[200px] md:w-[200px] object-contain rounded-xl"
+            />
           </Link>
-        ))}
-      </div>
 
-      {/* Dropdown on Right */}
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setOpen(v => !v)}
-          style={{
-            background: '#2BA5D7',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            padding: '0.5rem 1.25rem',
-            fontWeight: 600,
-            fontSize: '1rem',
-            cursor: 'pointer',
-            boxShadow: open ? '0 2px 8px rgba(43,165,215,0.15)' : undefined,
-            outline: open ? '2px solid #2BA5D7' : undefined,
-          }}
-        >
-          More ▾
-        </button>
-        {open && (
-          <div
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: '110%',
-              background: '#fff',
-              border: '1px solid #e5e7eb',
-              borderRadius: 8,
-              boxShadow: '0 4px 16px rgba(30,41,59,0.08)',
-              minWidth: 180,
-              zIndex: 100,
-            }}
-            onMouseLeave={() => setOpen(false)}
-          >
-            {moreLinks.map(link => (
-              <Link
-                key={link.href}
+          {/* Desktop Navigation - more spacing */}
+          <div className="hidden md:flex items-center gap-10">
+            {mainLinks.map(link => (
+              <Link 
+                key={link.href} 
                 href={link.href}
-                style={{
-                  display: 'block',
-                  padding: '0.75rem 1.25rem',
-                  color: '#1e293b',
-                  textDecoration: 'none',
-                  fontWeight: 500,
-                  fontSize: '1rem',
-                  borderBottom: '1px solid #f1f5f9',
-                }}
-                onClick={() => setOpen(false)}
+                className="text-[#1E5A96] font-bold text-lg hover:text-[#7CB342] transition"
               >
                 {link.label}
               </Link>
             ))}
+            
+            {/* More Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setMoreOpen(!moreOpen)}
+                onBlur={() => setTimeout(() => setMoreOpen(false), 150)}
+                className="text-[#1E5A96] font-bold text-lg hover:text-[#7CB342] transition flex items-center gap-1"
+              >
+                More
+                <svg className={`w-5 h-5 transition-transform ${moreOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {moreOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50">
+                  {moreLinks.map(link => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="block px-5 py-2.5 text-gray-700 hover:bg-[#E8F4F8] hover:text-[#1E5A96] transition font-medium"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
+
+          {/* Mobile Hamburger */}
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition"
+          >
+            {mobileMenuOpen ? (
+              <svg className="w-8 h-8 text-[#1E5A96]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-8 h-8 text-[#1E5A96]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-white border-t border-gray-100">
+          <div className="px-4 py-3 space-y-1">
+            {mainLinks.map(link => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-3 px-4 text-[#1E5A96] font-semibold text-lg hover:bg-gray-50 rounded-lg transition"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <div className="border-t border-gray-100 pt-2 mt-2">
+              {moreLinks.map(link => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block py-2.5 px-4 text-gray-600 font-medium hover:bg-gray-50 rounded-lg transition"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
