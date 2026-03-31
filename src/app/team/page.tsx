@@ -63,7 +63,7 @@ export default function TeamPage() {
             name: item.name || item.caption || 'Team Member',
             title: item.role || item.category || 'Team Member',
             bio: item.bio || item.caption || '',
-            image: `/uploads/${item.timestamp}-web.webp`,
+            image: `/api/image?file=${item.timestamp}-web.webp`,
             category: item.category,
             timestamp: item.timestamp
           }));
@@ -140,11 +140,11 @@ export default function TeamPage() {
                   key={member.timestamp || idx}
                   className="bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition border border-gray-100"
                 >
-                  <div className="aspect-square overflow-hidden bg-gray-100">
+                  <div className="overflow-hidden bg-gray-100">
                     <img
                       src={member.image}
                       alt={member.name}
-                      className="w-full h-full object-cover"
+                      className="w-full max-h-80 object-contain mx-auto"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = '/images/placeholder-team.jpg';
                       }}

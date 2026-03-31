@@ -6,8 +6,8 @@ import { MediaMetadata } from '@/lib/getMedia';
 
 export default function GalleryClient({ items }: { items: MediaMetadata[] }) {
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [selectedImage, setSelectedImage] = useState<MediaMetadata | null>(null);
   
-  // Extract unique categories safely
   const categories = ['all', ...Array.from(new Set(items.map(item => item.category || 'general')))];
 
   const filteredItems = activeCategory === 'all' 
@@ -17,89 +17,131 @@ export default function GalleryClient({ items }: { items: MediaMetadata[] }) {
   return (
     <div>
       {/* Filter Dropdown */}
-      <div className="flex justify-center mb-16">
-        <div className="relative w-full max-w-sm">
-          <select
-            value={activeCategory}
-            onChange={(e) => setActiveCategory(e.target.value)}
-            className="w-full appearance-none bg-white border-2 border-gray-200 text-gray-700 py-3.5 px-6 pr-12 rounded-2xl shadow-sm focus:outline-none focus:ring-4 focus:ring-[#7CB342]/20 focus:border-[#7CB342] font-semibold transition-all cursor-pointer hover:shadow-md text-lg"
-          >
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category === 'all' ? 'All Gallery Photos' : category.charAt(0).toUpperCase() + category.slice(1)}
-              </option>
-            ))}
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-6 text-gray-500">
-            <svg className="fill-current h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-          </div>
-        </div>
+      <div className="flex justify-center mb-10">
+        <select
+          value={activeCategory}
+          onChange={(e) => setActiveCategory(e.target.value)}
+          className="bg-white border-2 border-gray-200 text-gray-700 py-3 px-6 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[#7CB342] font-semibold text-base"
+        >
+          {categories.map((category) => (
+            <option key={category} value={category}>
+              {category === 'all' ? 'All Photos' : category}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Masonry/Grid Layout */}
+      {/* Pinterest-style Masonry Grid */}
       {filteredItems.length === 0 ? (
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center py-24 bg-white rounded-3xl border border-gray-100 shadow-sm"
-        >
+        <div className="text-center py-20">
           <div className="text-5xl mb-4">📷</div>
           <h3 className="text-2xl font-bold text-gray-800 mb-2">No photos yet</h3>
-          <p className="text-gray-500 text-lg">Check back soon for new gallery updates!</p>
-        </motion.div>
+          <p className="text-gray-500">Check back soon for updates!</p>
+        </div>
       ) : (
-        <motion.div 
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
-          layout
-        >
-          <AnimatePresence>
-            {filteredItems.map((item) => (
-              <motion.div
-                key={item.filename}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.3 }}
-                className="group relative rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-500 bg-white border border-gray-100 flex flex-col h-full"
-              >
-                {/* Image Container */}
-                <div className="relative h-[320px] bg-gray-100 overflow-hidden shrink-0">
-                  <img 
-                    src={`/api/image?file=${item.timestamp}-web.webp`}
-                    alt={item.caption || 'Community Impact'}
-                    className="object-cover w-full h-full transform group-hover:scale-105 transition-transform duration-700 ease-in-out"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = `/api/image?file=${item.filename}`;
-                    }}
-                  />
-                  {/* Gradient Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                </div>
-                
-                {/* Card Content */}
-                <div className="p-8 flex flex-col flex-grow">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-xs font-black uppercase tracking-widest text-[#1E5A96] bg-[#1E5A96]/10 px-4 py-1.5 rounded-full">
-                      {item.category || 'General'}
+        <div className="columns-2 sm:columns-2 lg:columns-3 gap-3 sm:gap-4">
+          {filteredItems.map((item) => (
+            <div
+              key={item.filename}
+              onClick={() => setSelectedImage(item)}
+              className="break-inside-avoid mb-3 sm:mb-4 cursor-pointer group relative rounded-xl sm:rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300"
+            >
+              {/* Image */}
+              <img 
+                src={`/api/image?file=${item.timestamp}-web.webp`}
+                alt={item.caption || 'Gallery image'}
+                className="w-full h-auto block"
+                loading="lazy"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `/api/image?file=${item.filename}`;
+                }}
+              />
+              
+              {/* Bottom Gradient Bar */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 sm:p-4 pt-8 sm:pt-10">
+                <p className="text-white font-medium text-sm sm:text-base truncate">
+                  {item.caption || 'Community moment'}
+                </p>
+                <p className="text-white/70 text-xs sm:text-sm mt-0.5">
+                  {item.category || 'General'}
+                </p>
+              </div>
+              
+              {/* Hover indicator */}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200 flex items-center justify-center">
+                <span className="opacity-0 group-hover:opacity-100 bg-white/90 text-gray-800 px-3 py-1.5 rounded-full text-sm font-medium transition-opacity duration-200 shadow-lg">
+                  View
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      <AnimatePresence>
+        {selectedImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedImage(null)}
+            className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 cursor-pointer"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl overflow-hidden max-w-4xl w-full max-h-[90vh] flex flex-col cursor-default shadow-2xl"
+            >
+              {/* Image */}
+              <div className="relative flex-1 min-h-0 bg-gray-100">
+                <img
+                  src={`/api/image?file=${selectedImage.timestamp}-web.webp`}
+                  alt={selectedImage.caption || 'Gallery image'}
+                  className="w-full h-full object-contain max-h-[60vh]"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = `/api/image?file=${selectedImage.filename}`;
+                  }}
+                />
+              </div>
+              
+              {/* Details */}
+              <div className="p-5 sm:p-6 border-t">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <span className="inline-block text-xs font-bold uppercase tracking-wide text-[#7CB342] bg-[#7CB342]/10 px-3 py-1 rounded-full mb-2">
+                      {selectedImage.category || 'General'}
                     </span>
-                    <span className="text-gray-400 text-sm font-medium">
-                      {new Date(item.published).toLocaleDateString(undefined, {
+                    <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">
+                      {selectedImage.caption || 'Community moment'}
+                    </h3>
+                    <p className="text-gray-500 text-sm">
+                      {new Date(selectedImage.published).toLocaleDateString('en-US', {
+                        weekday: 'long',
                         year: 'numeric',
-                        month: 'short',
+                        month: 'long',
                         day: 'numeric'
                       })}
-                    </span>
+                    </p>
                   </div>
-                  <p className="text-gray-800 font-medium leading-relaxed text-lg">
-                    {item.caption || 'A memorable moment from our community.'}
-                  </p>
+                  
+                  {/* Close button */}
+                  <button
+                    onClick={() => setSelectedImage(null)}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0"
+                  >
+                    <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </motion.div>
-      )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

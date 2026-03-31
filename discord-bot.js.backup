@@ -176,36 +176,29 @@ client.on(Events.MessageCreate, async (message) => {
   if (command === 'list') {
     try {
       const files = await readdir(METADATA_DIR).catch(() => []);
-      const jsonFiles = files.filter(f => f.endsWith('.json'));
       
-      if (jsonFiles.length === 0) {
+      if (files.length === 0) {
         await message.reply('📭 No uploads yet. Drop an image to get started!');
         return;
       }
 
-      global.fileList = [];
-      let fileListText = '';
-      let num = 1;
-      
-      for (const file of jsonFiles.slice(0, 20)) {
+      let fileList = '';
+      for (const file of files.slice(0, 15)) {
         try {
           const data = JSON.parse(await readFile(path.join(METADATA_DIR, file), 'utf8'));
-          global.fileList.push({ file, data });
-          
-          const displayName = data.name || data.caption || data.originalName || data.filename;
-          const dest = data.destination || '?';
-          const cat = data.category || '';
-          
-          fileListText += `**${num}.** ${displayName} (${dest})\n`;
-          num++;
+          fileList += `• **${data.filename}**\n  └ ${data.destination} → ${data.category}\n`;
         } catch (e) {}
+      }
+      
+      if (files.length > 15) {
+        fileList += `\n... and ${files.length - 15} more`;
       }
 
       const embed = new EmbedBuilder()
         .setColor(0x7CB342)
-        .setTitle(`📁 Files (${jsonFiles.length})`)
-        .setDescription(fileListText || 'No files')
-        .setFooter({ text: '!delete [number] or !delete all' });
+        .setTitle(`📁 Uploaded Files (${files.length})`)
+        .setDescription(fileList || 'No files found')
+        .setFooter({ text: 'Use !delete [filename] to remove a file' });
       await message.reply({ embeds: [embed] });
     } catch (error) {
       console.error('List error:', error);
@@ -219,7 +212,7 @@ client.on(Events.MessageCreate, async (message) => {
     const target = args.slice(1).join(' ').toLowerCase();
     
     if (!target) {
-      await message.reply('❓ Usage: `!delete 1` or `!delete all`\nRun `!list` first to see numbers.');
+      await message.reply('❓ Usage: `!delete all` or `!delete [filename]`');
       return;
     }
 
@@ -229,58 +222,49 @@ client.on(Events.MessageCreate, async (message) => {
         for (const file of uploads) {
           await unlink(path.join(PUBLIC_MEDIA_DIR, file)).catch(() => {});
         }
+        
         const metadata = await readdir(METADATA_DIR).catch(() => []);
         for (const file of metadata) {
           await unlink(path.join(METADATA_DIR, file)).catch(() => {});
         }
-        global.fileList = [];
-        await message.reply(`🗑️ **Deleted all ${metadata.length} files!**`);
-        console.log('🗑️ All deleted by', message.author.username);
-        return;
-      }
-
-      const num = parseInt(target);
-      if (!isNaN(num) && global.fileList && global.fileList[num - 1]) {
-        const item = global.fileList[num - 1];
-        const data = item.data;
         
-        await unlink(path.join(METADATA_DIR, item.file)).catch(() => {});
-        await unlink(path.join(PUBLIC_MEDIA_DIR, data.filename)).catch(() => {});
-        await unlink(path.join(PUBLIC_MEDIA_DIR, `${data.timestamp}-web.webp`)).catch(() => {});
-        await unlink(path.join(PUBLIC_MEDIA_DIR, `${data.timestamp}-thumb.webp`)).catch(() => {});
-        
-        const displayName = data.name || data.caption || data.filename;
-        await message.reply(`🗑️ **Deleted #${num}:** ${displayName}`);
-        console.log('🗑️ Deleted', displayName, 'by', message.author.username);
-        global.fileList.splice(num - 1, 1);
+        await message.reply(`🗑️ **Deleted all ${uploads.length} files!** Gallery is now empty.`);
+        console.log('🗑️ All uploads deleted by', message.author.username);
         return;
       }
 
       const metadataFiles = await readdir(METADATA_DIR).catch(() => []);
+      let deleted = false;
+
       for (const file of metadataFiles) {
         try {
           const data = JSON.parse(await readFile(path.join(METADATA_DIR, file), 'utf8'));
-          const searchText = `${data.filename} ${data.name || ''} ${data.caption || ''}`.toLowerCase();
           
-          if (searchText.includes(target)) {
+          if (data.filename.toLowerCase().includes(target)) {
             await unlink(path.join(METADATA_DIR, file)).catch(() => {});
-            await unlink(path.join(PUBLIC_MEDIA_DIR, data.filename)).catch(() => {});
-            await unlink(path.join(PUBLIC_MEDIA_DIR, `${data.timestamp}-web.webp`)).catch(() => {});
-            await unlink(path.join(PUBLIC_MEDIA_DIR, `${data.timestamp}-thumb.webp`)).catch(() => {});
             
-            await message.reply(`🗑️ **Deleted:** ${data.name || data.caption || data.filename}`);
-            return;
+            const timestamp = data.timestamp;
+            await unlink(path.join(PUBLIC_MEDIA_DIR, data.filename)).catch(() => {});
+            await unlink(path.join(PUBLIC_MEDIA_DIR, `${timestamp}-web.webp`)).catch(() => {});
+            await unlink(path.join(PUBLIC_MEDIA_DIR, `${timestamp}-thumb.webp`)).catch(() => {});
+            
+            await message.reply(`🗑️ **Deleted:** ${data.filename}`);
+            console.log('🗑️ Deleted', data.filename, 'by', message.author.username);
+            deleted = true;
+            break;
           }
         } catch (e) {}
       }
-      await message.reply(`❌ Not found. Run \`!list\` first.`);
+
+      if (!deleted) {
+        await message.reply(`❌ File not found: "${target}"\nUse \`!list\` to see all files.`);
+      }
     } catch (error) {
       console.error('Delete error:', error);
-      await message.reply('❌ Error deleting');
+      await message.reply('❌ Error deleting file');
     }
     return;
   }
-
 
   // !addcategory [name] - Add new gallery category
   if (command === 'addcategory') {
