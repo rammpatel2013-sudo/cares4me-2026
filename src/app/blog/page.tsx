@@ -1,14 +1,45 @@
-'use client';
+import { readdir, readFile } from 'fs/promises';
+import path from 'path';
+import Link from 'next/link';
 
-import { AnimatedCard } from '../animations';
+interface BlogPost {
+  id: number;
+  slug: string;
+  title: string;
+  content: string;
+  category: string;
+  author: string;
+  published: string;
+  status: string;
+  image?: string;
+}
 
-export default function BlogPage() {
-  const stories = [
-    { title: 'How Care4ME Started: A Student\'s Mission', excerpt: 'Darsh Gajera\'s journey from garage to global impact.', image: '🚀', date: 'March 20, 2026', author: 'Care4ME Team' },
-    { title: 'Meet Our Volunteers', excerpt: 'The incredible people making our mission possible.', image: '🤝', date: 'March 18, 2026', author: 'Volunteer Stories' },
-    { title: 'Equipment That Changes Lives', excerpt: 'Real stories of families receiving wheelchairs and medical equipment.', image: '❤️', date: 'March 15, 2026', author: 'Impact Stories' },
-    { title: 'Partnership Highlights', excerpt: 'How we work with NGOs and churches around the world.', image: '🌍', date: 'March 12, 2026', author: 'Partnership Program' }
-  ];
+async function getBlogPosts(): Promise<BlogPost[]> {
+  const blogDir = path.join(process.cwd(), 'public', 'blog-posts');
+  
+  try {
+    const files = await readdir(blogDir);
+    const jsonFiles = files.filter(f => f.endsWith('.json'));
+    
+    const posts: BlogPost[] = [];
+    for (const file of jsonFiles) {
+      try {
+        const content = await readFile(path.join(blogDir, file), 'utf8');
+        const post = JSON.parse(content);
+        if (post.status === 'published') {
+          posts.push(post);
+        }
+      } catch (e) {}
+    }
+    
+    return posts.sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
+  } catch (e) {
+    return [];
+  }
+}
+
+export default async function BlogPage() {
+  const posts = await getBlogPosts();
 
   return (
     <main className="bg-white">
@@ -21,24 +52,62 @@ export default function BlogPage() {
 
       <section className="py-16 px-4 sm:px-6 bg-white">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {stories.map((story, idx) => (
-              <AnimatedCard key={idx} delay={idx * 0.1}>
-                <div className="bg-[#F5F5F5] rounded-xl overflow-hidden hover:shadow-lg transition cursor-pointer">
-                  <div className="bg-gradient-to-br from-[#E8F4F8] to-[#F0F8E8] h-48 flex items-center justify-center text-6xl">{story.image}</div>
-                  <div className="p-6">
-                    <p className="text-sm text-[#7CB342] font-bold mb-2">{story.date}</p>
-                    <h3 className="text-xl font-black text-[#1E5A96] mb-3">{story.title}</h3>
-                    <p className="text-gray-600 mb-4 leading-relaxed">{story.excerpt}</p>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-500">{story.author}</span>
-                      <a href="#" className="text-[#2BA5D7] font-bold hover:text-[#1E5A96]">Read →</a>
+          {posts.length === 0 ? (
+            <div className="text-center py-20">
+              <div className="text-6xl mb-4">📝</div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">No blog posts yet</h3>
+              <p className="text-gray-500">Use <code className="bg-gray-100 px-2 py-1 rounded">!blog</code> in Discord to create posts!</p>
+            </div>
+          ) : (
+            <div className="columns-1 md:columns-2 gap-6 space-y-6">
+              {posts.map((post) => (
+                <Link href={`/blog/${post.slug}`} key={post.id} className="break-inside-avoid block">
+                  <div className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100">
+                    {/* Image */}
+                    <div className="relative overflow-hidden">
+                      {post.image ? (
+                        <img 
+                          src={post.image.startsWith('http') ? post.image : `/api/image?file=${post.image}`}
+                          alt={post.title}
+                          className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      ) : (
+                        <div className="w-full h-48 bg-gradient-to-br from-[#1E5A96] to-[#7CB342] flex items-center justify-center">
+                          <span className="text-white/20 text-7xl font-black">C4M</span>
+                        </div>
+                      )}
+                      
+                      {/* Bottom gradient overlay with caption */}
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-12">
+                        <span className="text-xs font-bold uppercase tracking-wide text-[#7CB342]">
+                          {post.category}
+                        </span>
+                        <h3 className="text-white font-bold text-lg mt-1 line-clamp-2">{post.title}</h3>
+                      </div>
+                    </div>
+                    
+                    {/* Content below image */}
+                    <div className="p-5">
+                      <p className="text-gray-600 text-sm leading-relaxed line-clamp-3 mb-4">
+                        {post.content.substring(0, 150)}...
+                      </p>
+                      <div className="flex justify-between items-center text-sm">
+                        <div className="text-gray-500">
+                          <span>{post.author}</span>
+                          <span className="mx-2">•</span>
+                          <span>{new Date(post.published).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric'
+                          })}</span>
+                        </div>
+                        <span className="text-[#2BA5D7] font-bold group-hover:text-[#1E5A96] transition">Read →</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </AnimatedCard>
-            ))}
-          </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </main>

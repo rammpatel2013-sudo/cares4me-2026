@@ -25,10 +25,12 @@ const sharp = require('sharp');
 
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
 const MEDIA_CHANNEL_ID = process.env.DISCORD_MEDIA_CHANNEL_ID || '1484953248560447703';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 
 const BASE_DIR = process.env.APP_DIR || process.cwd();
 const PUBLIC_MEDIA_DIR = path.join(BASE_DIR, 'public', 'uploads');
 const METADATA_DIR = path.join(BASE_DIR, 'public', 'media-metadata');
+const BLOG_DIR = path.join(BASE_DIR, 'public', 'blog-posts');
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -56,6 +58,7 @@ const client = new Client({
 });
 
 const uploadSessions = new Map();
+const blogSessions = new Map();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
@@ -118,6 +121,97 @@ function scheduleSessionCleanup(timestamp) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// GROQ AI BLOG GENERATOR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function generateBlogPost(topic, keyPoints, category) {
+  if (!GROQ_API_KEY) {
+    throw new Error('GROQ_API_KEY not configured');
+  }
+
+  const prompt = `You are a professional blog writer for Care4ME, a nonprofit organization focused on restoring health and renewing hope through medical equipment donations and community care.
+
+Write a compelling blog post about: "${topic}"
+
+Key points to include:
+${keyPoints}
+
+Category: ${category}
+
+Requirements:
+- Write in a warm, inspiring tone
+- Include a catchy title
+- Write 3-5 paragraphs
+- End with a call to action
+- Make it suitable for a nonprofit website
+- Do NOT use markdown formatting like ** or ## - just plain text with natural paragraphs
+
+Format your response exactly like this:
+TITLE: [Your title here]
+CONTENT:
+[Your blog content here with natural paragraph breaks]`;
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 1500
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Groq API error: ${error}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices[0]?.message?.content || '';
+  
+  // Parse title and content
+  const titleMatch = content.match(/TITLE:\s*(.+)/i);
+  const contentMatch = content.match(/CONTENT:\s*([\s\S]+)/i);
+  
+  return {
+    title: titleMatch ? titleMatch[1].trim() : topic,
+    content: contentMatch ? contentMatch[1].trim() : content
+  };
+}
+
+async function saveBlogPost(blogData) {
+  await mkdir(BLOG_DIR, { recursive: true });
+  
+  const timestamp = Date.now();
+  const slug = blogData.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 50);
+  
+  const filename = `${timestamp}-${slug}.json`;
+  const filepath = path.join(BLOG_DIR, filename);
+  
+  const post = {
+    id: timestamp,
+    slug,
+    title: blogData.title,
+    content: blogData.content,
+    category: blogData.category,
+    author: blogData.author,
+    published: new Date().toISOString(),
+    status: 'published'
+  };
+  
+  await writeFile(filepath, JSON.stringify(post, null, 2));
+  return post;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // BOT READY
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -130,12 +224,15 @@ client.once(Events.ClientReady, async () => {
   console.log(`  Channel:  ${MEDIA_CHANNEL_ID}`);
   console.log(`  Uploads:  ${PUBLIC_MEDIA_DIR}`);
   console.log(`  Metadata: ${METADATA_DIR}`);
+  console.log(`  Blog:     ${BLOG_DIR}`);
+  console.log(`  Groq:     ${GROQ_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('');
 
   try {
     await mkdir(PUBLIC_MEDIA_DIR, { recursive: true });
     await mkdir(METADATA_DIR, { recursive: true });
+    await mkdir(BLOG_DIR, { recursive: true });
     console.log('✅ Directories verified');
   } catch (err) {
     console.error('❌ Directory creation failed:', err.message);
@@ -143,7 +240,7 @@ client.once(Events.ClientReady, async () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// COMMANDS - !help, !list, !delete, !addcategory
+// COMMANDS - !help, !list, !delete, !addcategory, !blog
 // ═══════════════════════════════════════════════════════════════════════════════
 
 client.on(Events.MessageCreate, async (message) => {
@@ -163,9 +260,10 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '📸 Upload Image', value: 'Just drop an image in this channel', inline: false },
         { name: '!help', value: 'Show this help message', inline: true },
         { name: '!list', value: 'Show all uploaded files', inline: true },
+        { name: '!delete [number]', value: 'Delete by number from list', inline: true },
         { name: '!delete all', value: 'Delete ALL uploads', inline: true },
-        { name: '!delete [filename]', value: 'Delete a specific file', inline: true },
-        { name: '!addcategory [name]', value: 'Add new gallery category', inline: true }
+        { name: '!addcategory [name]', value: 'Add new gallery category', inline: true },
+        { name: '!blog [topic]', value: 'Generate AI blog post', inline: true }
       )
       .setFooter({ text: 'Made for Care4ME' });
     await message.reply({ embeds: [embed] });
@@ -176,7 +274,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (command === 'list') {
     try {
       const files = await readdir(METADATA_DIR).catch(() => []);
-      const jsonFiles = files.filter(f => f.endsWith('.json'));
+      const jsonFiles = files.filter(f => f.endsWith('.json') && !f.startsWith('_'));
       
       if (jsonFiles.length === 0) {
         await message.reply('📭 No uploads yet. Drop an image to get started!');
@@ -231,7 +329,9 @@ client.on(Events.MessageCreate, async (message) => {
         }
         const metadata = await readdir(METADATA_DIR).catch(() => []);
         for (const file of metadata) {
-          await unlink(path.join(METADATA_DIR, file)).catch(() => {});
+          if (!file.startsWith('_')) {
+            await unlink(path.join(METADATA_DIR, file)).catch(() => {});
+          }
         }
         global.fileList = [];
         await message.reply(`🗑️ **Deleted all ${metadata.length} files!**`);
@@ -281,8 +381,7 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-
-  // !addcategory [name] - Add new gallery category
+  // !addcategory [name]
   if (command === 'addcategory') {
     const categoryName = args.slice(1).join(' ');
     
@@ -291,7 +390,6 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // Store in a categories file
     const categoriesPath = path.join(METADATA_DIR, '_categories.json');
     let categories = [];
     
@@ -312,6 +410,54 @@ client.on(Events.MessageCreate, async (message) => {
     }
     return;
   }
+
+  // !blog [topic]
+  if (command === 'blog') {
+    const topic = args.slice(1).join(' ');
+    
+    if (!topic) {
+      await message.reply('❓ Usage: `!blog Food Drive Success Story`\n\nI\'ll generate an AI blog post about that topic!');
+      return;
+    }
+
+    if (!GROQ_API_KEY) {
+      await message.reply('❌ AI blog generation is not configured. Please add GROQ_API_KEY to .env.local');
+      return;
+    }
+
+    // Store session for this blog
+    const timestamp = Date.now();
+    blogSessions.set(timestamp, {
+      topic,
+      userId: message.author.id,
+      username: message.author.username
+    });
+
+    // Show category selection
+    const categoryRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`blog_cat_${timestamp}`)
+        .setPlaceholder('📁 Select blog category')
+        .addOptions([
+          { label: '📰 News', value: 'news', description: 'Organization news and updates' },
+          { label: '🎉 Events', value: 'events', description: 'Event recaps and announcements' },
+          { label: '❤️ Success Stories', value: 'success-stories', description: 'Impact stories' },
+          { label: '💡 Tips & Resources', value: 'tips', description: 'Helpful information' },
+          { label: '🤝 Community', value: 'community', description: 'Community highlights' }
+        ])
+    );
+
+    const embed = new EmbedBuilder()
+      .setColor(0x2BA5D7)
+      .setTitle('✍️ AI Blog Generator')
+      .addFields(
+        { name: '📝 Topic', value: topic, inline: false }
+      )
+      .setFooter({ text: 'Step 1 of 3: Choose a category' });
+
+    await message.reply({ embeds: [embed], components: [categoryRow] });
+    return;
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -321,7 +467,7 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.MessageCreate, async (message) => {
   if (message.channelId !== MEDIA_CHANNEL_ID) return;
   if (message.author.bot) return;
-  if (message.content.startsWith('!')) return; // Skip commands
+  if (message.content.startsWith('!')) return;
 
   const images = [...message.attachments.values()].filter(
     att => att.contentType?.startsWith('image')
@@ -372,7 +518,6 @@ client.on(Events.MessageCreate, async (message) => {
         destination: null,
         category: null,
         platforms: [],
-        // Team-specific fields
         name: null,
         role: null,
         bio: null,
@@ -421,6 +566,245 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     // ─────────────────────────────────────────────────────────────────────────
+    // BLOG CATEGORY SELECT
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('blog_cat_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired. Please run !blog again.');
+      }
+
+      session.category = interaction.values[0];
+
+      // Show modal for key points
+      const modal = new ModalBuilder()
+        .setCustomId(`blog_points_${timestamp}`)
+        .setTitle('Blog Key Points')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('key_points')
+              .setLabel('Key points to include (one per line)')
+              .setStyle(TextInputStyle.Paragraph)
+              .setPlaceholder('- We collected 500 pairs of shoes\n- 50 volunteers participated\n- Distributed to 3 local shelters')
+              .setRequired(true)
+              .setMaxLength(1000)
+          )
+        );
+
+      await interaction.showModal(modal);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BLOG KEY POINTS MODAL
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('blog_points_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired. Please run !blog again.');
+      }
+
+      await interaction.deferReply();
+
+      const keyPoints = interaction.fields.getTextInputValue('key_points');
+      session.keyPoints = keyPoints;
+
+      // Generate blog post with AI
+      const embed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('⏳ Generating Blog Post...')
+        .setDescription('AI is writing your blog post. This may take a few seconds...');
+
+      await interaction.editReply({ embeds: [embed] });
+
+      try {
+        const blogPost = await generateBlogPost(session.topic, keyPoints, session.category);
+        session.generatedTitle = blogPost.title;
+        session.generatedContent = blogPost.content;
+
+        // Show preview with edit/publish buttons
+        const buttonRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`blog_edit_${timestamp}`)
+            .setLabel('✏️ Edit')
+            .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`blog_publish_${timestamp}`)
+            .setLabel('✅ Publish')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`blog_cancel_${timestamp}`)
+            .setLabel('❌ Cancel')
+            .setStyle(ButtonStyle.Danger)
+        );
+
+        const previewEmbed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle(`📝 ${blogPost.title}`)
+          .setDescription(blogPost.content.substring(0, 4000))
+          .addFields(
+            { name: '📁 Category', value: session.category, inline: true },
+            { name: '✍️ Author', value: session.username, inline: true }
+          )
+          .setFooter({ text: 'Review and publish or edit' });
+
+        await interaction.editReply({ embeds: [previewEmbed], components: [buttonRow] });
+
+      } catch (error) {
+        console.error('Blog generation error:', error);
+        const errorEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('❌ Generation Failed')
+          .setDescription(`Error: ${error.message}\n\nPlease try again with \`!blog ${session.topic}\``);
+        await interaction.editReply({ embeds: [errorEmbed], components: [] });
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BLOG EDIT BUTTON
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_edit_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId(`blog_edit_modal_${timestamp}`)
+        .setTitle('Edit Blog Post')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('blog_title')
+              .setLabel('Title')
+              .setStyle(TextInputStyle.Short)
+              .setValue(session.generatedTitle)
+              .setRequired(true)
+              .setMaxLength(200)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('blog_content')
+              .setLabel('Content')
+              .setStyle(TextInputStyle.Paragraph)
+              .setValue(session.generatedContent.substring(0, 4000))
+              .setRequired(true)
+              .setMaxLength(4000)
+          )
+        );
+
+      await interaction.showModal(modal);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BLOG EDIT MODAL SUBMIT
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('blog_edit_modal_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[3]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      session.generatedTitle = interaction.fields.getTextInputValue('blog_title');
+      session.generatedContent = interaction.fields.getTextInputValue('blog_content');
+
+      const buttonRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`blog_edit_${timestamp}`)
+          .setLabel('✏️ Edit Again')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`blog_publish_${timestamp}`)
+          .setLabel('✅ Publish')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`blog_cancel_${timestamp}`)
+          .setLabel('❌ Cancel')
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      const previewEmbed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle(`📝 ${session.generatedTitle}`)
+        .setDescription(session.generatedContent.substring(0, 4000))
+        .addFields(
+          { name: '📁 Category', value: session.category, inline: true },
+          { name: '✍️ Author', value: session.username, inline: true }
+        )
+        .setFooter({ text: 'Updated! Review and publish' });
+
+      await safeReply(interaction, { embeds: [previewEmbed], components: [buttonRow] });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BLOG PUBLISH BUTTON
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_publish_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      await safeDeferReply(interaction);
+
+      try {
+        const post = await saveBlogPost({
+          title: session.generatedTitle,
+          content: session.generatedContent,
+          category: session.category,
+          author: session.username
+        });
+
+        const successEmbed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Blog Post Published!')
+          .addFields(
+            { name: '📝 Title', value: post.title, inline: false },
+            { name: '📁 Category', value: post.category, inline: true },
+            { name: '✍️ Author', value: post.author, inline: true }
+          )
+          .setFooter({ text: 'Post will appear on the blog page' });
+
+        await safeReply(interaction, { embeds: [successEmbed], components: [] });
+        
+        console.log(`\n✅ BLOG PUBLISHED: ${post.title}`);
+        console.log(`   → Category: ${post.category}`);
+        console.log(`   → Author: ${post.author}`);
+
+        blogSessions.delete(timestamp);
+
+      } catch (error) {
+        console.error('Blog save error:', error);
+        await safeReply(interaction, '❌ Failed to save blog post. Please try again.');
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BLOG CANCEL BUTTON
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_cancel_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      blogSessions.delete(timestamp);
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('❌ Blog Post Cancelled')
+        .setDescription('The blog post was not published.');
+
+      await safeReply(interaction, { embeds: [embed], components: [] });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // DESTINATION SELECT
     // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isStringSelectMenu() && interaction.customId.startsWith('dest_')) {
@@ -434,7 +818,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       session.destination = interaction.values[0];
       console.log(`   📂 Destination: ${session.destination}`);
 
-      // Load custom categories if they exist
       let customCategories = [];
       try {
         const categoriesPath = path.join(METADATA_DIR, '_categories.json');
@@ -451,7 +834,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
           { label: '🎉 Event: Food Drive 2026', value: 'Event: Food Drive 2026' },
           { label: '🎉 Event: Spring Health Fair', value: 'Event: Spring Health Fair' },
           { label: '🎉 Event: Winter Formal', value: 'Event: Winter Formal' },
-          // Add custom categories
           ...customCategories.map(cat => ({ label: `🏷️ ${cat}`, value: cat }))
         ];
       } else if (session.destination === 'campaign') {
@@ -480,7 +862,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         new StringSelectMenuBuilder()
           .setCustomId(`cat_${timestamp}`)
           .setPlaceholder('🏷️ Select a category')
-          .addOptions(categoryOptions.slice(0, 25)) // Discord max 25 options
+          .addOptions(categoryOptions.slice(0, 25))
       );
 
       const embed = new EmbedBuilder()
@@ -508,7 +890,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       session.category = interaction.values[0];
       console.log(`   🏷️ Category: ${session.category}`);
 
-      // TEAM DESTINATION - Show special modal with Name, Role, Bio
       if (session.destination === 'team') {
         const modal = new ModalBuilder()
           .setCustomId(`team_info_${timestamp}`)
@@ -545,7 +926,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         await interaction.showModal(modal);
       } else {
-        // OTHER DESTINATIONS - Show regular caption modal
         const modal = new ModalBuilder()
           .setCustomId(`caption_${timestamp}`)
           .setTitle('Edit Caption')
@@ -583,7 +963,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       console.log(`   👤 Team Member: ${session.name} (${session.role})`);
 
-      // Skip social media selection for team, go straight to confirmation
       const confirmRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`confirm_${timestamp}`)
@@ -610,7 +989,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CAPTION MODAL SUBMIT (for non-team destinations)
+    // CAPTION MODAL SUBMIT
     // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isModalSubmit() && interaction.customId.startsWith('caption_')) {
       const timestamp = parseInt(interaction.customId.split('_')[1]);
@@ -720,7 +1099,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await safeDeferReply(interaction);
 
-      // Create metadata - include team fields if present
       const metadata = {
         timestamp: session.timestamp,
         filename: session.filename,
@@ -730,7 +1108,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         platforms: session.platforms || [],
         published: new Date().toISOString(),
         uploadedBy: session.username,
-        // Team-specific fields
         name: session.name || null,
         role: session.role || null,
         bio: session.bio || null
