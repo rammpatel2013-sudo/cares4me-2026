@@ -3,6 +3,10 @@ import path from 'path';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+// FORCE DYNAMIC - No rebuild needed!
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface BlogPost {
   id: number;
   slug: string;
@@ -12,7 +16,9 @@ interface BlogPost {
   author: string;
   published: string;
   image?: string;
-  imageType?: string;  // 'ai' or 'upload'
+  heroImage?: string;
+  inlineImages?: string[];
+  imageType?: string;
 }
 
 async function getBlogPost(slug: string): Promise<BlogPost | null> {
@@ -34,21 +40,12 @@ async function getBlogPost(slug: string): Promise<BlogPost | null> {
   return null;
 }
 
-// Helper to get the correct image URL
 function getBlogImageUrl(image: string | undefined): string | null {
   if (!image) return null;
-  
-  // If it's already a full URL, use it
-  if (image.startsWith('http')) {
-    return image;
-  }
-  
-  // If it's in blog-images folder (new format from AI/upload)
-  if (image.endsWith('.webp') && (image.startsWith('ai-') || image.startsWith('upload-'))) {
+  if (image.startsWith('http')) return image;
+  if (image.includes('-hero') || image.includes('-inline') || image.startsWith('ai-') || image.startsWith('upload-')) {
     return `/blog-images/${image}`;
   }
-  
-  // Fallback to old /api/image route for legacy images
   return `/api/image?file=${image}`;
 }
 
@@ -64,7 +61,11 @@ export default async function BlogPostPage({
     notFound();
   }
 
-  const imageUrl = getBlogImageUrl(post.image);
+  const heroImageUrl = getBlogImageUrl(post.heroImage || post.image);
+  const inlineImageUrls = (post.inlineImages || []).map(img => getBlogImageUrl(img)).filter(Boolean);
+  
+  const paragraphs = post.content.split('\n\n').filter(p => p.trim());
+  const insertImageAfterParagraph = Math.min(2, Math.floor(paragraphs.length / 2));
 
   return (
     <main className="bg-white min-h-screen">
@@ -90,14 +91,13 @@ export default async function BlogPostPage({
         </div>
       </section>
 
-      {imageUrl && (
+      {heroImageUrl && (
         <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-6 relative">
           <img 
-            src={imageUrl}
+            src={heroImageUrl}
             alt={post.title}
             className="w-full h-auto rounded-2xl shadow-lg"
           />
-          {/* AI badge */}
           {post.imageType === 'ai' && (
             <div className="absolute top-4 right-8 bg-black/50 text-white text-sm px-3 py-1 rounded-full backdrop-blur-sm">
               🎨 AI Generated
@@ -108,11 +108,67 @@ export default async function BlogPostPage({
 
       <section className="py-12 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto">
-          {post.content.split('\n\n').map((paragraph, idx) => (
-            <p key={idx} className="text-gray-700 leading-relaxed mb-6 text-lg">
-              {paragraph}
-            </p>
+          {paragraphs.map((paragraph, idx) => (
+            <div key={idx}>
+              <p className="text-gray-700 leading-relaxed mb-6 text-lg">
+                {paragraph}
+              </p>
+              
+              {idx === insertImageAfterParagraph && inlineImageUrls.length > 0 && (
+                <div className="my-8">
+                  <img 
+                    src={inlineImageUrls[0] as string}
+                    alt={`${post.title} - inline image`}
+                    className="w-full h-auto rounded-xl shadow-md"
+                  />
+                </div>
+              )}
+              
+              {idx === insertImageAfterParagraph + 2 && inlineImageUrls.length > 1 && (
+                <div className="my-8">
+                  <img 
+                    src={inlineImageUrls[1] as string}
+                    alt={`${post.title} - inline image 2`}
+                    className="w-full h-auto rounded-xl shadow-md"
+                  />
+                </div>
+              )}
+            </div>
           ))}
+          
+          {inlineImageUrls.length > 2 && (
+            <div className="grid grid-cols-2 gap-4 my-8">
+              {inlineImageUrls.slice(2).map((url, idx) => (
+                <img 
+                  key={idx}
+                  src={url as string}
+                  alt={`${post.title} - image ${idx + 3}`}
+                  className="w-full h-auto rounded-xl shadow-md"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+      
+      <section className="py-12 px-4 sm:px-6 bg-gradient-to-br from-[#E8F4F8] to-[#F0F8E8]">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-2xl font-bold text-[#1E5A96] mb-4">Want to Make a Difference?</h2>
+          <p className="text-gray-600 mb-6">Join us in our mission to restore health and renew hope.</p>
+          <div className="flex justify-center gap-4 flex-wrap">
+            <Link 
+              href="/donate"
+              className="bg-[#7CB342] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#689F38] transition-colors"
+            >
+              Donate Now
+            </Link>
+            <Link 
+              href="/volunteer"
+              className="border-2 border-[#1E5A96] text-[#1E5A96] px-6 py-3 rounded-lg font-semibold hover:bg-[#1E5A96] hover:text-white transition-colors"
+            >
+              Volunteer
+            </Link>
+          </div>
         </div>
       </section>
     </main>

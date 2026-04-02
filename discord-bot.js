@@ -122,52 +122,76 @@ function scheduleSessionCleanup(timestamp) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// AI IMAGE GENERATION (Pollinations.ai - FREE, no API key needed)
+// AI IMAGE GENERATION (Multiple fallback providers for reliability)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function generateBlogImage(topic, category) {
   // Create a prompt optimized for blog header images
   const stylePrompts = {
-    'news': 'professional photography, news style, bright lighting',
-    'events': 'event photography, celebration, community gathering',
-    'success-stories': 'heartwarming, inspirational, people helping people',
-    'tips': 'clean infographic style, educational, modern',
-    'community': 'diverse community, togetherness, warm colors'
+    'news': 'professional photography, news style, bright lighting, editorial',
+    'events': 'event photography, celebration, community gathering, joyful',
+    'success-stories': 'heartwarming, inspirational, people helping people, hopeful',
+    'tips': 'clean modern style, educational, helpful, informative',
+    'community': 'diverse community, togetherness, warm colors, unity'
   };
 
-  const style = stylePrompts[category] || 'professional, nonprofit organization';
-  
-  const prompt = `${topic}, ${style}, high quality, 16:9 aspect ratio, suitable for blog header, no text overlay`;
-  const encodedPrompt = encodeURIComponent(prompt);
-  
-  // Pollinations.ai free image generation
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&nologo=true`;
+  const style = stylePrompts[category] || 'professional, nonprofit organization, community';
+  const prompt = `${topic}, ${style}, high quality, photorealistic, no text, no watermark`;
   
   console.log(`🎨 Generating AI image for: "${topic}"`);
-  console.log(`   URL: ${imageUrl}`);
-  
-  try {
-    // Fetch the generated image
-    const response = await fetch(imageUrl);
+
+  // Try multiple providers in order
+  const providers = [
+    // Provider 1: Pollinations FLUX (usually most reliable)
+    async () => {
+      const encodedPrompt = encodeURIComponent(prompt);
+      const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&model=flux&nologo=true`;
+      console.log(`   Trying Pollinations FLUX...`);
+      const response = await fetch(url, { timeout: 60000 });
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    },
     
-    if (!response.ok) {
-      throw new Error(`Image generation failed: ${response.status}`);
+    // Provider 2: Pollinations Turbo (faster, lower quality)
+    async () => {
+      const encodedPrompt = encodeURIComponent(prompt);
+      const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&model=turbo&nologo=true`;
+      console.log(`   Trying Pollinations Turbo...`);
+      const response = await fetch(url, { timeout: 45000 });
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    },
+
+    // Provider 3: Picsum (placeholder - always works, random photo)
+    async () => {
+      console.log(`   Falling back to placeholder image...`);
+      const url = `https://picsum.photos/1200/630`;
+      const response = await fetch(url, { timeout: 15000 });
+      if (!response.ok) throw new Error(`Status ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
     }
-    
-    const buffer = Buffer.from(await response.arrayBuffer());
-    
-    // Verify it's actually an image
-    if (buffer.length < 1000) {
-      throw new Error('Generated image too small, may have failed');
+  ];
+
+  for (const provider of providers) {
+    try {
+      const buffer = await provider();
+      
+      // Verify it's actually an image (at least 5KB)
+      if (buffer.length < 5000) {
+        throw new Error('Image too small');
+      }
+      
+      console.log(`   ✅ AI image generated (${(buffer.length / 1024).toFixed(1)} KB)`);
+      return buffer;
+      
+    } catch (error) {
+      console.log(`   ⚠️ Provider failed: ${error.message}`);
+      continue;
     }
-    
-    console.log(`   ✅ AI image generated (${(buffer.length / 1024).toFixed(1)} KB)`);
-    return buffer;
-    
-  } catch (error) {
-    console.error(`   ❌ AI image generation failed:`, error.message);
-    return null;
   }
+  
+  console.error(`   ❌ All image providers failed`);
+  return null;
 }
 
 async function saveBlogImage(buffer, timestamp, isAIGenerated = false) {

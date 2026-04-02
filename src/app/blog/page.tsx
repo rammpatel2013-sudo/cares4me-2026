@@ -2,6 +2,10 @@ import { readdir, readFile } from 'fs/promises';
 import path from 'path';
 import Link from 'next/link';
 
+// FORCE DYNAMIC - No rebuild needed!
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface BlogPost {
   id: number;
   slug: string;
@@ -12,7 +16,9 @@ interface BlogPost {
   published: string;
   status: string;
   image?: string;
-  imageType?: string;  // 'ai' or 'upload'
+  heroImage?: string;
+  inlineImages?: string[];
+  imageType?: string;
 }
 
 async function getBlogPosts(): Promise<BlogPost[]> {
@@ -40,20 +46,17 @@ async function getBlogPosts(): Promise<BlogPost[]> {
 }
 
 // Helper to get the correct image URL
-function getBlogImageUrl(image: string | undefined): string | null {
+function getBlogImageUrl(post: BlogPost): string | null {
+  const image = post.heroImage || post.image;
   if (!image) return null;
   
-  // If it's already a full URL, use it
-  if (image.startsWith('http')) {
-    return image;
-  }
+  if (image.startsWith('http')) return image;
   
-  // If it's in blog-images folder (new format from AI/upload)
-  if (image.endsWith('.webp') && (image.startsWith('ai-') || image.startsWith('upload-'))) {
+  // New format in blog-images folder
+  if (image.includes('-hero') || image.includes('-inline') || image.startsWith('ai-') || image.startsWith('upload-')) {
     return `/blog-images/${image}`;
   }
   
-  // Fallback to old /api/image route for legacy images
   return `/api/image?file=${image}`;
 }
 
@@ -80,12 +83,11 @@ export default async function BlogPage() {
           ) : (
             <div className="columns-1 md:columns-2 gap-6 space-y-6">
               {posts.map((post) => {
-                const imageUrl = getBlogImageUrl(post.image);
+                const imageUrl = getBlogImageUrl(post);
                 
                 return (
                   <Link href={`/blog/${post.slug}`} key={post.id} className="break-inside-avoid block">
                     <div className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100">
-                      {/* Image */}
                       <div className="relative overflow-hidden">
                         {imageUrl ? (
                           <img 
@@ -99,14 +101,12 @@ export default async function BlogPage() {
                           </div>
                         )}
                         
-                        {/* AI badge */}
                         {post.imageType === 'ai' && (
                           <div className="absolute top-3 right-3 bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
                             🎨 AI
                           </div>
                         )}
                         
-                        {/* Bottom gradient overlay with caption */}
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-12">
                           <span className="text-xs font-bold uppercase tracking-wide text-[#7CB342]">
                             {post.category}
@@ -115,7 +115,6 @@ export default async function BlogPage() {
                         </div>
                       </div>
                       
-                      {/* Content below image */}
                       <div className="p-5">
                         <p className="text-gray-600 text-sm leading-relaxed line-clamp-3 mb-4">
                           {post.content.substring(0, 150)}...
