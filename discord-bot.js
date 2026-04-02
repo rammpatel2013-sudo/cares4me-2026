@@ -14,7 +14,7 @@ const {
   EmbedBuilder,
   MessageFlags
 } = require('discord.js');
-const { createWriteStream } = require('fs');
+const { createWriteStream, existsSync } = require('fs');
 const { mkdir, writeFile, readdir, unlink, readFile } = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
@@ -32,6 +32,15 @@ const PUBLIC_MEDIA_DIR = path.join(BASE_DIR, 'public', 'uploads');
 const METADATA_DIR = path.join(BASE_DIR, 'public', 'media-metadata');
 const BLOG_DIR = path.join(BASE_DIR, 'public', 'blog-posts');
 const BLOG_IMAGES_DIR = path.join(BASE_DIR, 'public', 'blog-images');
+const DEFAULT_BLOG_AUTHOR = process.env.DEFAULT_BLOG_AUTHOR || 'Darsh Gajera';
+
+const BLOG_LOGO_CANDIDATES = [
+  path.join(BASE_DIR, 'public', 'logo.png'),
+  path.join(BASE_DIR, 'public', 'logo.jpg'),
+  path.join(BASE_DIR, 'public', 'loggoo.jpg'),
+  path.join(BASE_DIR, 'public', 'Care4me.jpg'),
+  path.join(BASE_DIR, 'public', 'cares4memedia', '2023', '07', 'Logo-W.png')
+];
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -60,6 +69,15 @@ const client = new Client({
 
 const uploadSessions = new Map();
 const blogSessions = new Map();
+
+function getFallbackLogoPath() {
+  for (const logoPath of BLOG_LOGO_CANDIDATES) {
+    if (existsSync(logoPath)) {
+      return logoPath;
+    }
+  }
+  return null;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
@@ -125,6 +143,64 @@ function scheduleSessionCleanup(timestamp) {
 // AI IMAGE GENERATION
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+async function createFallbackBlogImage(title, category, imageFilename) {
+  const safeTitle = (title || 'Care4ME Community Update').slice(0, 90);
+  const safeCategory = (category || 'community').replace(/[^a-zA-Z0-9- ]/g, '');
+  const logoPath = getFallbackLogoPath();
+
+  const svg = `
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F704F" />
+      <stop offset="55%" stop-color="#1E5A96" />
+      <stop offset="100%" stop-color="#7CB342" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <circle cx="1030" cy="80" r="140" fill="rgba(255,255,255,0.08)" />
+  <circle cx="170" cy="540" r="180" fill="rgba(255,255,255,0.08)" />
+  <rect x="72" y="72" width="1056" height="486" rx="28" fill="rgba(0,0,0,0.16)" />
+  <text x="110" y="190" fill="#E8F4F8" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="3">CARE4ME</text>
+  <text x="110" y="240" fill="#F0F8E8" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" letter-spacing="2">${safeCategory.toUpperCase()}</text>
+  <foreignObject x="110" y="270" width="980" height="230">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="color:#ffffff;font-family:Segoe UI, Arial, sans-serif;font-size:56px;font-weight:800;line-height:1.1;">
+      ${safeTitle}
+    </div>
+  </foreignObject>
+</svg>`;
+
+  const imagePath = path.join(BLOG_IMAGES_DIR, imageFilename);
+  let pipeline = sharp(Buffer.from(svg)).resize(1200, 630, { fit: 'cover' });
+
+  if (logoPath) {
+    try {
+      const logoBuffer = await sharp(logoPath)
+        .resize(170, 170, {
+          fit: 'contain',
+          background: { r: 255, g: 255, b: 255, alpha: 0 }
+        })
+        .png()
+        .toBuffer();
+
+      pipeline = pipeline.composite([
+        {
+          input: logoBuffer,
+          gravity: 'southeast',
+          top: 28,
+          left: 28
+        }
+      ]);
+    } catch (logoErr) {
+      console.log(`   ⚠️ Logo overlay failed, continuing without logo: ${logoErr.message}`);
+    }
+  }
+
+  await pipeline.webp({ quality: 88 }).toFile(imagePath);
+
+  return imageFilename;
+}
+
 async function generateBlogImage(title, category) {
   const timestamp = Date.now();
   const imageFilename = `${timestamp}-blog.webp`;
@@ -136,23 +212,23 @@ async function generateBlogImage(title, category) {
   // List of image generation services to try (free, no API key needed)
   const imageProviders = [
     // Pollinations FLUX (best quality)
-    `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&model=flux&nologo=true`,
+    { name: 'pollinations-flux', url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&model=flux&nologo=true` },
     // Pollinations Turbo (faster fallback)  
-    `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&model=turbo&nologo=true`,
+    { name: 'pollinations-turbo', url: `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&model=turbo&nologo=true` },
     // Placeholder as last resort
-    `https://picsum.photos/1200/630?random=${timestamp}`
+    { name: 'picsum', url: `https://picsum.photos/1200/630?random=${timestamp}` }
   ];
   
   await mkdir(BLOG_IMAGES_DIR, { recursive: true });
   
-  for (const imageUrl of imageProviders) {
+  for (const provider of imageProviders) {
     try {
-      console.log(`   🎨 Trying image generation...`);
+      console.log(`   🎨 Trying image provider: ${provider.name}`);
       
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 45000); // 45 second timeout
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
-      const imageResponse = await fetch(imageUrl, { 
+      const imageResponse = await fetch(provider.url, {
         signal: controller.signal,
         headers: { 'User-Agent': 'Care4ME-Bot/1.0' }
       });
@@ -160,15 +236,29 @@ async function generateBlogImage(title, category) {
       clearTimeout(timeout);
       
       if (!imageResponse.ok) {
-        console.log(`   ⚠️ Provider returned ${imageResponse.status}, trying next...`);
+        console.log(`   ⚠️ ${provider.name} returned ${imageResponse.status}, trying next...`);
+        continue;
+      }
+
+      const contentType = imageResponse.headers.get('content-type') || '';
+      if (!contentType.startsWith('image/')) {
+        console.log(`   ⚠️ ${provider.name} returned non-image content-type: ${contentType}`);
         continue;
       }
       
       const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
       
-      // Check if we got a valid image (at least 10KB)
-      if (imageBuffer.length < 10000) {
-        console.log(`   ⚠️ Image too small (${imageBuffer.length} bytes), trying next...`);
+      // Some valid WebP files can be small; keep threshold conservative.
+      if (imageBuffer.length < 2500) {
+        console.log(`   ⚠️ ${provider.name} returned tiny image (${imageBuffer.length} bytes), trying next...`);
+        continue;
+      }
+
+      // Ensure sharp can parse the image before saving.
+      try {
+        await sharp(imageBuffer).metadata();
+      } catch (parseErr) {
+        console.log(`   ⚠️ ${provider.name} image parse failed: ${parseErr.message}`);
         continue;
       }
       
@@ -178,17 +268,23 @@ async function generateBlogImage(title, category) {
         .webp({ quality: 85 })
         .toFile(path.join(BLOG_IMAGES_DIR, imageFilename));
       
-      console.log(`   ✅ Image saved: ${imageFilename}`);
+      console.log(`   ✅ Image saved via ${provider.name}: ${imageFilename}`);
       return imageFilename;
       
     } catch (error) {
-      console.log(`   ⚠️ Image generation failed: ${error.message}`);
+      console.log(`   ⚠️ ${provider.name} failed: ${error.message}`);
       continue;
     }
   }
   
-  console.log('   ❌ All image providers failed, proceeding without image');
-  return null;
+  try {
+    await createFallbackBlogImage(title, category, imageFilename);
+    console.log(`   ✅ Fallback image created locally: ${imageFilename}`);
+    return imageFilename;
+  } catch (fallbackErr) {
+    console.log(`   ❌ Fallback image generation failed: ${fallbackErr.message}`);
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -289,7 +385,7 @@ async function saveBlogPost(blogData) {
     title: blogData.title,
     content: blogData.content,
     category: blogData.category,
-    author: blogData.author,
+    author: blogData.author || DEFAULT_BLOG_AUTHOR,
     published: new Date().toISOString(),
     status: 'published',
     image: imageFilename,
@@ -555,6 +651,7 @@ client.on(Events.MessageCreate, async (message) => {
       topic,
       userId: message.author.id,
       username: message.author.username,
+      authorName: DEFAULT_BLOG_AUTHOR,
       userImage: userImageFilename
     });
 
@@ -577,6 +674,7 @@ client.on(Events.MessageCreate, async (message) => {
       .setTitle('✍️ AI Blog Generator')
       .addFields(
         { name: '📝 Topic', value: topic, inline: false },
+        { name: '✍️ Author', value: DEFAULT_BLOG_AUTHOR, inline: false },
         { name: '🖼️ Image', value: userImageFilename ? '✅ Your uploaded image will be used' : '🎨 AI will generate a featured image', inline: false }
       )
       .setFooter({ text: 'Step 1 of 3: Choose a category' });
@@ -990,6 +1088,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .addComponents(
           new ActionRowBuilder().addComponents(
             new TextInputBuilder()
+              .setCustomId('author_name')
+              .setLabel('Author name (optional)')
+              .setStyle(TextInputStyle.Short)
+              .setValue(session.authorName || DEFAULT_BLOG_AUTHOR)
+              .setPlaceholder('Darsh Gajera')
+              .setRequired(false)
+              .setMaxLength(80)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
               .setCustomId('key_points')
               .setLabel('Key points to include (one per line)')
               .setStyle(TextInputStyle.Paragraph)
@@ -1015,6 +1123,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       await interaction.deferReply();
 
+      const authorInput = (interaction.fields.getTextInputValue('author_name') || '').trim();
+      session.authorName = authorInput || DEFAULT_BLOG_AUTHOR;
       const keyPoints = interaction.fields.getTextInputValue('key_points');
       session.keyPoints = keyPoints;
 
@@ -1053,7 +1163,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(blogPost.content.substring(0, 4000))
           .addFields(
             { name: '📁 Category', value: session.category, inline: true },
-            { name: '✍️ Author', value: session.username, inline: true },
+            { name: '✍️ Author', value: session.authorName || DEFAULT_BLOG_AUTHOR, inline: true },
             { name: '🖼️ Image', value: session.userImage ? '📷 Your upload' : '🎨 AI will generate', inline: true }
           )
           .setFooter({ text: 'Review and publish or edit' });
@@ -1143,7 +1253,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setDescription(session.generatedContent.substring(0, 4000))
         .addFields(
           { name: '📁 Category', value: session.category, inline: true },
-          { name: '✍️ Author', value: session.username, inline: true }
+          { name: '✍️ Author', value: session.authorName || DEFAULT_BLOG_AUTHOR, inline: true }
         )
         .setFooter({ text: 'Updated! Review and publish' });
 
@@ -1176,7 +1286,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           title: session.generatedTitle,
           content: session.generatedContent,
           category: session.category,
-          author: session.username,
+          author: session.authorName || DEFAULT_BLOG_AUTHOR,
           userImage: session.userImage
         });
 

@@ -12,6 +12,7 @@
     "bot": "node discord-bot-interactive.js"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.4",
     "axios": "^1.13.6",
     "discord.js": "^14.25.1",
     "dotenv": "^16.6.1",
