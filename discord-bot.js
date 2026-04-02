@@ -31,6 +31,7 @@ const BASE_DIR = process.env.APP_DIR || process.cwd();
 const PUBLIC_MEDIA_DIR = path.join(BASE_DIR, 'public', 'uploads');
 const METADATA_DIR = path.join(BASE_DIR, 'public', 'media-metadata');
 const BLOG_DIR = path.join(BASE_DIR, 'public', 'blog-posts');
+const BLOG_IMAGES_DIR = path.join(BASE_DIR, 'public', 'blog-images');
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -121,6 +122,73 @@ function scheduleSessionCleanup(timestamp) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// AI IMAGE GENERATION (Pollinations.ai - FREE, no API key needed)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function generateBlogImage(topic, category) {
+  // Create a prompt optimized for blog header images
+  const stylePrompts = {
+    'news': 'professional photography, news style, bright lighting',
+    'events': 'event photography, celebration, community gathering',
+    'success-stories': 'heartwarming, inspirational, people helping people',
+    'tips': 'clean infographic style, educational, modern',
+    'community': 'diverse community, togetherness, warm colors'
+  };
+
+  const style = stylePrompts[category] || 'professional, nonprofit organization';
+  
+  const prompt = `${topic}, ${style}, high quality, 16:9 aspect ratio, suitable for blog header, no text overlay`;
+  const encodedPrompt = encodeURIComponent(prompt);
+  
+  // Pollinations.ai free image generation
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=630&nologo=true`;
+  
+  console.log(`🎨 Generating AI image for: "${topic}"`);
+  console.log(`   URL: ${imageUrl}`);
+  
+  try {
+    // Fetch the generated image
+    const response = await fetch(imageUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Image generation failed: ${response.status}`);
+    }
+    
+    const buffer = Buffer.from(await response.arrayBuffer());
+    
+    // Verify it's actually an image
+    if (buffer.length < 1000) {
+      throw new Error('Generated image too small, may have failed');
+    }
+    
+    console.log(`   ✅ AI image generated (${(buffer.length / 1024).toFixed(1)} KB)`);
+    return buffer;
+    
+  } catch (error) {
+    console.error(`   ❌ AI image generation failed:`, error.message);
+    return null;
+  }
+}
+
+async function saveBlogImage(buffer, timestamp, isAIGenerated = false) {
+  await mkdir(BLOG_IMAGES_DIR, { recursive: true });
+  
+  const prefix = isAIGenerated ? 'ai' : 'upload';
+  const filename = `${prefix}-${timestamp}.webp`;
+  const filepath = path.join(BLOG_IMAGES_DIR, filename);
+  
+  // Optimize and save as webp
+  await sharp(buffer)
+    .resize(1200, 630, { fit: 'cover' })
+    .webp({ quality: 85 })
+    .toFile(filepath);
+  
+  console.log(`   💾 Blog image saved: ${filename}`);
+  
+  return filename;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // GROQ AI BLOG GENERATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -203,6 +271,8 @@ async function saveBlogPost(blogData) {
     content: blogData.content,
     category: blogData.category,
     author: blogData.author,
+    image: blogData.image || null,  // NEW: image filename
+    imageType: blogData.imageType || null,  // NEW: 'ai' or 'upload'
     published: new Date().toISOString(),
     status: 'published'
   };
@@ -225,6 +295,7 @@ client.once(Events.ClientReady, async () => {
   console.log(`  Uploads:  ${PUBLIC_MEDIA_DIR}`);
   console.log(`  Metadata: ${METADATA_DIR}`);
   console.log(`  Blog:     ${BLOG_DIR}`);
+  console.log(`  Blog Img: ${BLOG_IMAGES_DIR}`);
   console.log(`  Groq:     ${GROQ_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('');
@@ -233,6 +304,7 @@ client.once(Events.ClientReady, async () => {
     await mkdir(PUBLIC_MEDIA_DIR, { recursive: true });
     await mkdir(METADATA_DIR, { recursive: true });
     await mkdir(BLOG_DIR, { recursive: true });
+    await mkdir(BLOG_IMAGES_DIR, { recursive: true });
     console.log('✅ Directories verified');
   } catch (err) {
     console.error('❌ Directory creation failed:', err.message);
@@ -265,6 +337,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '!addcategory [name]', value: 'Add new gallery category', inline: true },
         { name: '!blog [topic]', value: 'Generate AI blog post', inline: true }
       )
+      .setDescription('**📝 Blog Images:**\nAttach an image with `!blog` to use your own image, or let AI generate one!')
       .setFooter({ text: 'Made for Care4ME' });
     await message.reply({ embeds: [embed] });
     return;
@@ -411,12 +484,12 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  // !blog [topic]
+  // !blog [topic] - NOW WITH IMAGE SUPPORT!
   if (command === 'blog') {
     const topic = args.slice(1).join(' ');
     
     if (!topic) {
-      await message.reply('❓ Usage: `!blog Food Drive Success Story`\n\nI\'ll generate an AI blog post about that topic!');
+      await message.reply('❓ **Usage:** `!blog Food Drive Success Story`\n\n📸 **Tip:** Attach an image to use your own photo, or I\'ll generate one with AI!');
       return;
     }
 
@@ -425,12 +498,35 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // Store session for this blog
+    // Check for attached image
+    const images = [...message.attachments.values()].filter(
+      att => att.contentType?.startsWith('image')
+    );
+    
     const timestamp = Date.now();
+    let uploadedImageBuffer = null;
+    
+    if (images.length > 0) {
+      // User attached an image - download it
+      console.log(`\n📸 Blog with user image: ${images[0].name}`);
+      try {
+        const response = await fetch(images[0].url);
+        if (response.ok) {
+          uploadedImageBuffer = Buffer.from(await response.arrayBuffer());
+          console.log(`   ✅ Downloaded user image (${(uploadedImageBuffer.length / 1024).toFixed(1)} KB)`);
+        }
+      } catch (err) {
+        console.error('   ❌ Failed to download image:', err.message);
+      }
+    }
+
+    // Store session for this blog
     blogSessions.set(timestamp, {
       topic,
       userId: message.author.id,
-      username: message.author.username
+      username: message.author.username,
+      uploadedImageBuffer,  // Store the user's image if provided
+      hasUserImage: uploadedImageBuffer !== null
     });
 
     // Show category selection
@@ -447,13 +543,22 @@ client.on(Events.MessageCreate, async (message) => {
         ])
     );
 
+    const imageNote = uploadedImageBuffer 
+      ? '✅ **Your image will be used!**' 
+      : '🎨 **AI will generate an image** based on your topic';
+
     const embed = new EmbedBuilder()
       .setColor(0x2BA5D7)
       .setTitle('✍️ AI Blog Generator')
       .addFields(
-        { name: '📝 Topic', value: topic, inline: false }
+        { name: '📝 Topic', value: topic, inline: false },
+        { name: '🖼️ Image', value: imageNote, inline: false }
       )
       .setFooter({ text: 'Step 1 of 3: Choose a category' });
+
+    if (uploadedImageBuffer && images.length > 0) {
+      embed.setThumbnail(images[0].url);
+    }
 
     await message.reply({ embeds: [embed], components: [categoryRow] });
     return;
@@ -598,7 +703,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // BLOG KEY POINTS MODAL
+    // BLOG KEY POINTS MODAL - NOW GENERATES IMAGE TOO!
     // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isModalSubmit() && interaction.customId.startsWith('blog_points_')) {
       const timestamp = parseInt(interaction.customId.split('_')[2]);
@@ -617,14 +722,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const embed = new EmbedBuilder()
         .setColor(0xFFA500)
         .setTitle('⏳ Generating Blog Post...')
-        .setDescription('AI is writing your blog post. This may take a few seconds...');
+        .setDescription(session.hasUserImage 
+          ? 'AI is writing your blog post and processing your image...' 
+          : 'AI is writing your blog post and generating an image...');
 
       await interaction.editReply({ embeds: [embed] });
 
       try {
+        // Generate blog text
         const blogPost = await generateBlogPost(session.topic, keyPoints, session.category);
         session.generatedTitle = blogPost.title;
         session.generatedContent = blogPost.content;
+
+        // Handle image - either use uploaded or generate
+        let imageFilename = null;
+        let imageType = null;
+
+        if (session.uploadedImageBuffer) {
+          // Use user's uploaded image
+          imageFilename = await saveBlogImage(session.uploadedImageBuffer, timestamp, false);
+          imageType = 'upload';
+          console.log(`   📸 Using uploaded image: ${imageFilename}`);
+        } else {
+          // Generate AI image
+          const aiImageBuffer = await generateBlogImage(session.topic, session.category);
+          if (aiImageBuffer) {
+            imageFilename = await saveBlogImage(aiImageBuffer, timestamp, true);
+            imageType = 'ai';
+            console.log(`   🎨 Using AI-generated image: ${imageFilename}`);
+          }
+        }
+
+        session.imageFilename = imageFilename;
+        session.imageType = imageType;
 
         // Show preview with edit/publish buttons
         const buttonRow = new ActionRowBuilder().addComponents(
@@ -632,6 +762,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setCustomId(`blog_edit_${timestamp}`)
             .setLabel('✏️ Edit')
             .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`blog_regen_img_${timestamp}`)
+            .setLabel('🎨 New Image')
+            .setStyle(ButtonStyle.Primary),
           new ButtonBuilder()
             .setCustomId(`blog_publish_${timestamp}`)
             .setLabel('✅ Publish')
@@ -642,15 +776,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
             .setStyle(ButtonStyle.Danger)
         );
 
+        const imageStatus = imageFilename 
+          ? `✅ ${imageType === 'ai' ? 'AI Generated' : 'Your Image'}` 
+          : '⚠️ No image (will use default)';
+
         const previewEmbed = new EmbedBuilder()
           .setColor(0x7CB342)
           .setTitle(`📝 ${blogPost.title}`)
-          .setDescription(blogPost.content.substring(0, 4000))
+          .setDescription(blogPost.content.substring(0, 3500))
           .addFields(
             { name: '📁 Category', value: session.category, inline: true },
-            { name: '✍️ Author', value: session.username, inline: true }
+            { name: '✍️ Author', value: session.username, inline: true },
+            { name: '🖼️ Image', value: imageStatus, inline: true }
           )
-          .setFooter({ text: 'Review and publish or edit' });
+          .setFooter({ text: 'Review and publish, or click "New Image" to regenerate' });
 
         await interaction.editReply({ embeds: [previewEmbed], components: [buttonRow] });
 
@@ -662,6 +801,74 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setDescription(`Error: ${error.message}\n\nPlease try again with \`!blog ${session.topic}\``);
         await interaction.editReply({ embeds: [errorEmbed], components: [] });
       }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BLOG REGENERATE IMAGE BUTTON
+    // ─────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_regen_img_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[3]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      await interaction.deferUpdate();
+
+      // Delete old image if exists
+      if (session.imageFilename) {
+        try {
+          await unlink(path.join(BLOG_IMAGES_DIR, session.imageFilename));
+          console.log(`   🗑️ Deleted old image: ${session.imageFilename}`);
+        } catch (e) {}
+      }
+
+      // Generate new AI image
+      const newTimestamp = Date.now();
+      const aiImageBuffer = await generateBlogImage(session.topic, session.category);
+      
+      if (aiImageBuffer) {
+        session.imageFilename = await saveBlogImage(aiImageBuffer, newTimestamp, true);
+        session.imageType = 'ai';
+      }
+
+      // Update preview
+      const buttonRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`blog_edit_${timestamp}`)
+          .setLabel('✏️ Edit')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`blog_regen_img_${timestamp}`)
+          .setLabel('🎨 New Image')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`blog_publish_${timestamp}`)
+          .setLabel('✅ Publish')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`blog_cancel_${timestamp}`)
+          .setLabel('❌ Cancel')
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      const imageStatus = session.imageFilename 
+        ? `✅ AI Generated (new!)` 
+        : '⚠️ Generation failed';
+
+      const previewEmbed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle(`📝 ${session.generatedTitle}`)
+        .setDescription(session.generatedContent.substring(0, 3500))
+        .addFields(
+          { name: '📁 Category', value: session.category, inline: true },
+          { name: '✍️ Author', value: session.username, inline: true },
+          { name: '🖼️ Image', value: imageStatus, inline: true }
+        )
+        .setFooter({ text: 'Image regenerated! Review and publish' });
+
+      await interaction.editReply({ embeds: [previewEmbed], components: [buttonRow] });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -722,6 +929,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setLabel('✏️ Edit Again')
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
+          .setCustomId(`blog_regen_img_${timestamp}`)
+          .setLabel('🎨 New Image')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
           .setCustomId(`blog_publish_${timestamp}`)
           .setLabel('✅ Publish')
           .setStyle(ButtonStyle.Success),
@@ -731,13 +942,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setStyle(ButtonStyle.Danger)
       );
 
+      const imageStatus = session.imageFilename 
+        ? `✅ ${session.imageType === 'ai' ? 'AI Generated' : 'Your Image'}` 
+        : '⚠️ No image';
+
       const previewEmbed = new EmbedBuilder()
         .setColor(0x7CB342)
         .setTitle(`📝 ${session.generatedTitle}`)
-        .setDescription(session.generatedContent.substring(0, 4000))
+        .setDescription(session.generatedContent.substring(0, 3500))
         .addFields(
           { name: '📁 Category', value: session.category, inline: true },
-          { name: '✍️ Author', value: session.username, inline: true }
+          { name: '✍️ Author', value: session.username, inline: true },
+          { name: '🖼️ Image', value: imageStatus, inline: true }
         )
         .setFooter({ text: 'Updated! Review and publish' });
 
@@ -745,7 +961,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // BLOG PUBLISH BUTTON
+    // BLOG PUBLISH BUTTON - NOW SAVES IMAGE REFERENCE
     // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isButton() && interaction.customId.startsWith('blog_publish_')) {
       const timestamp = parseInt(interaction.customId.split('_')[2]);
@@ -762,8 +978,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           title: session.generatedTitle,
           content: session.generatedContent,
           category: session.category,
-          author: session.username
+          author: session.username,
+          image: session.imageFilename || null,
+          imageType: session.imageType || null
         });
+
+        const imageInfo = post.image 
+          ? `\n🖼️ **Image:** ${post.imageType === 'ai' ? 'AI Generated' : 'User Upload'}`
+          : '';
 
         const successEmbed = new EmbedBuilder()
           .setColor(0x7CB342)
@@ -771,7 +993,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .addFields(
             { name: '📝 Title', value: post.title, inline: false },
             { name: '📁 Category', value: post.category, inline: true },
-            { name: '✍️ Author', value: post.author, inline: true }
+            { name: '✍️ Author', value: post.author, inline: true },
+            { name: '🖼️ Image', value: post.image ? (post.imageType === 'ai' ? 'AI Generated' : 'Your Image') : 'None', inline: true }
           )
           .setFooter({ text: 'Post will appear on the blog page' });
 
@@ -780,6 +1003,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.log(`\n✅ BLOG PUBLISHED: ${post.title}`);
         console.log(`   → Category: ${post.category}`);
         console.log(`   → Author: ${post.author}`);
+        console.log(`   → Image: ${post.image || 'none'} (${post.imageType || 'n/a'})`);
 
         blogSessions.delete(timestamp);
 
@@ -794,6 +1018,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // ─────────────────────────────────────────────────────────────────────────
     if (interaction.isButton() && interaction.customId.startsWith('blog_cancel_')) {
       const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = blogSessions.get(timestamp);
+      
+      // Clean up image if it was generated
+      if (session?.imageFilename) {
+        try {
+          await unlink(path.join(BLOG_IMAGES_DIR, session.imageFilename));
+          console.log(`   🗑️ Cleaned up image: ${session.imageFilename}`);
+        } catch (e) {}
+      }
+      
       blogSessions.delete(timestamp);
 
       const embed = new EmbedBuilder()
@@ -848,28 +1082,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
         categoryOptions = [
           { label: '👔 Staff', value: 'staff' },
           { label: '🤝 Volunteers', value: 'volunteers' },
-          { label: '🏆 Board Members', value: 'board' }
+          { label: '🏛️ Board Members', value: 'board' },
+          { label: '🌟 Advisors', value: 'advisors' }
         ];
       } else if (session.destination === 'social') {
         categoryOptions = [
-          { label: '📢 Announcement', value: 'announcement' },
-          { label: '💡 Tip/Info', value: 'tip' },
-          { label: '❤️ Story', value: 'story' }
+          { label: '📸 General Post', value: 'general' },
+          { label: '🎉 Event Highlight', value: 'event' },
+          { label: '❤️ Impact Story', value: 'impact' },
+          { label: '📢 Announcement', value: 'announcement' }
         ];
       }
+
+      categoryOptions = categoryOptions.slice(0, 25);
 
       const categoryRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`cat_${timestamp}`)
           .setPlaceholder('🏷️ Select a category')
-          .addOptions(categoryOptions.slice(0, 25))
+          .addOptions(categoryOptions)
       );
 
       const embed = new EmbedBuilder()
-        .setColor(0x7CB342)
-        .setTitle(`📂 Destination: ${session.destination.toUpperCase()}`)
+        .setColor(0x2BA5D7)
+        .setTitle('🏷️ Choose Category')
         .addFields(
-          { name: '✏️ Caption', value: `"${session.autoCaption}"`, inline: false }
+          { name: '📂 Destination', value: session.destination, inline: true },
+          { name: '✏️ Caption', value: `"${session.userCaption}"`, inline: false }
         )
         .setFooter({ text: 'Step 2 of 4: Choose category' });
 
@@ -890,78 +1129,81 @@ client.on(Events.InteractionCreate, async (interaction) => {
       session.category = interaction.values[0];
       console.log(`   🏷️ Category: ${session.category}`);
 
+      // If Team destination, show team member modal instead
       if (session.destination === 'team') {
         const modal = new ModalBuilder()
-          .setCustomId(`team_info_${timestamp}`)
-          .setTitle('Team Member Info')
+          .setCustomId(`team_${timestamp}`)
+          .setTitle('Team Member Details')
           .addComponents(
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
-                .setCustomId('team_name')
-                .setLabel('Name')
+                .setCustomId('name_input')
+                .setLabel('Full Name')
                 .setStyle(TextInputStyle.Short)
-                .setPlaceholder('e.g., John Smith')
+                .setPlaceholder('Dr. Jane Smith')
                 .setRequired(true)
                 .setMaxLength(100)
             ),
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
-                .setCustomId('team_role')
+                .setCustomId('role_input')
                 .setLabel('Role / Title')
                 .setStyle(TextInputStyle.Short)
-                .setPlaceholder('e.g., Volunteer Coordinator')
+                .setPlaceholder('Medical Director')
                 .setRequired(true)
                 .setMaxLength(100)
             ),
             new ActionRowBuilder().addComponents(
               new TextInputBuilder()
-                .setCustomId('team_bio')
-                .setLabel('Brief Introduction')
+                .setCustomId('bio_input')
+                .setLabel('Short Bio')
                 .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder('Write a short bio about this team member...')
+                .setPlaceholder('Brief description of their role and background...')
                 .setRequired(true)
                 .setMaxLength(500)
             )
           );
 
         await interaction.showModal(modal);
-      } else {
-        const modal = new ModalBuilder()
-          .setCustomId(`caption_${timestamp}`)
-          .setTitle('Edit Caption')
-          .addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('caption_input')
-                .setLabel('Caption (describe this image)')
-                .setStyle(TextInputStyle.Paragraph)
-                .setValue(session.autoCaption)
-                .setMaxLength(500)
-                .setRequired(true)
-            )
-          );
-
-        await interaction.showModal(modal);
+        return;
       }
+
+      // For non-team destinations, show caption modal
+      const modal = new ModalBuilder()
+        .setCustomId(`caption_${timestamp}`)
+        .setTitle('Edit Caption')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('caption_input')
+              .setLabel('Caption')
+              .setStyle(TextInputStyle.Paragraph)
+              .setValue(session.autoCaption)
+              .setPlaceholder('Enter a caption for this image...')
+              .setRequired(true)
+              .setMaxLength(500)
+          )
+        );
+
+      await interaction.showModal(modal);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // TEAM INFO MODAL SUBMIT
+    // TEAM MODAL SUBMIT
     // ─────────────────────────────────────────────────────────────────────────
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('team_info_')) {
-      const timestamp = parseInt(interaction.customId.split('_')[2]);
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('team_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[1]);
       const session = uploadSessions.get(timestamp);
 
       if (!session) {
         return await safeReply(interaction, '❌ Session expired. Please upload again.');
       }
 
-      session.name = interaction.fields.getTextInputValue('team_name');
-      session.role = interaction.fields.getTextInputValue('team_role');
-      session.bio = interaction.fields.getTextInputValue('team_bio');
-      session.userCaption = `${session.name} - ${session.role}`;
+      session.name = interaction.fields.getTextInputValue('name_input');
+      session.role = interaction.fields.getTextInputValue('role_input');
+      session.bio = interaction.fields.getTextInputValue('bio_input');
 
-      console.log(`   👤 Team Member: ${session.name} (${session.role})`);
+      console.log(`   👤 Team: ${session.name} (${session.role})`);
 
       const confirmRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()

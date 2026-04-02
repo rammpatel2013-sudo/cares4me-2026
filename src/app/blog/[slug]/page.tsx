@@ -12,6 +12,7 @@ interface BlogPost {
   author: string;
   published: string;
   image?: string;
+  imageType?: string;  // 'ai' or 'upload'
 }
 
 async function getBlogPost(slug: string): Promise<BlogPost | null> {
@@ -33,6 +34,24 @@ async function getBlogPost(slug: string): Promise<BlogPost | null> {
   return null;
 }
 
+// Helper to get the correct image URL
+function getBlogImageUrl(image: string | undefined): string | null {
+  if (!image) return null;
+  
+  // If it's already a full URL, use it
+  if (image.startsWith('http')) {
+    return image;
+  }
+  
+  // If it's in blog-images folder (new format from AI/upload)
+  if (image.endsWith('.webp') && (image.startsWith('ai-') || image.startsWith('upload-'))) {
+    return `/blog-images/${image}`;
+  }
+  
+  // Fallback to old /api/image route for legacy images
+  return `/api/image?file=${image}`;
+}
+
 export default async function BlogPostPage({
   params,
 }: {
@@ -41,10 +60,11 @@ export default async function BlogPostPage({
   const { slug } = await params;
   const post = await getBlogPost(slug);
   
-  
   if (!post) {
     notFound();
   }
+
+  const imageUrl = getBlogImageUrl(post.image);
 
   return (
     <main className="bg-white min-h-screen">
@@ -70,13 +90,19 @@ export default async function BlogPostPage({
         </div>
       </section>
 
-      {post.image && (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-6">
+      {imageUrl && (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-6 relative">
           <img 
-            src={post.image.startsWith('http') ? post.image : `/api/image?file=${post.image}`}
+            src={imageUrl}
             alt={post.title}
             className="w-full h-auto rounded-2xl shadow-lg"
           />
+          {/* AI badge */}
+          {post.imageType === 'ai' && (
+            <div className="absolute top-4 right-8 bg-black/50 text-white text-sm px-3 py-1 rounded-full backdrop-blur-sm">
+              🎨 AI Generated
+            </div>
+          )}
         </div>
       )}
 
