@@ -354,7 +354,11 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '!delete [number]', value: 'Delete by number from list', inline: true },
         { name: '!delete all', value: 'Delete ALL uploads', inline: true },
         { name: '!addcategory [name]', value: 'Add new gallery category', inline: true },
-        { name: '!blog [topic]', value: 'Generate AI blog post with image', inline: true }
+        { name: '!blog [topic]', value: 'Generate AI blog post with image', inline: true },
+        { name: '📝 BLOG MANAGEMENT', value: '─────────────────────────────', inline: false },
+        { name: '!blogs', value: 'List all published blog posts', inline: true },
+        { name: '!edit [number]', value: 'Edit a published blog post', inline: true },
+        { name: '!delete-blog [number]', value: 'Delete a published blog post', inline: true }
       )
       .setFooter({ text: 'Made for Care4ME' });
     await message.reply({ embeds: [embed] });
@@ -578,6 +582,180 @@ client.on(Events.MessageCreate, async (message) => {
       .setFooter({ text: 'Step 1 of 3: Choose a category' });
 
     await message.reply({ embeds: [embed], components: [categoryRow] });
+    return;
+  }
+
+  // !blogs - List all published blog posts
+  if (command === 'blogs') {
+    try {
+      const files = await readdir(BLOG_DIR).catch(() => []);
+      const jsonFiles = files.filter(f => f.endsWith('.json'));
+      
+      if (jsonFiles.length === 0) {
+        await message.reply('📭 No blog posts yet. Use `!blog [topic]` to create one!');
+        return;
+      }
+
+      global.blogList = [];
+      let blogListText = '';
+      let num = 1;
+      
+      for (const file of jsonFiles.sort().reverse()) {
+        try {
+          const data = JSON.parse(await readFile(path.join(BLOG_DIR, file), 'utf8'));
+          if (data.status === 'published') {
+            global.blogList.push({ file, data });
+            
+            const pubDate = new Date(data.published).toLocaleDateString();
+            blogListText += `**${num}.** ${data.title}\n   📅 ${pubDate} | ✍️ ${data.author}\n`;
+            num++;
+          }
+        } catch (e) {}
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle(`📝 Blog Posts (${global.blogList.length})`)
+        .setDescription(blogListText || 'No published posts')
+        .setFooter({ text: '!edit [number] or !delete-blog [number]' });
+      await message.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error('List blogs error:', error);
+      await message.reply('❌ Error listing blog posts');
+    }
+    return;
+  }
+
+  // !edit [number] - Edit a published blog post
+  if (command === 'edit') {
+    const target = args.slice(1).join(' ');
+    
+    if (!target) {
+      await message.reply('❓ Usage: `!edit 1`\nRun `!blogs` first to see numbers.');
+      return;
+    }
+
+    try {
+      const num = parseInt(target);
+      if (!isNaN(num) && global.blogList && global.blogList[num - 1]) {
+        const item = global.blogList[num - 1];
+        const data = item.data;
+        
+        // Store edit session
+        const editSessionId = Date.now();
+        blogSessions.set(editSessionId, {
+          editFile: item.file,
+          editData: JSON.parse(JSON.stringify(data)), // Deep copy
+          originalData: data,
+          isEditing: true
+        });
+
+        const modal = new ModalBuilder()
+          .setCustomId(`blog_edit_published_${editSessionId}`)
+          .setTitle('Edit Blog Post')
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('blog_title')
+                .setLabel('Title')
+                .setStyle(TextInputStyle.Short)
+                .setValue(data.title)
+                .setRequired(true)
+                .setMaxLength(200)
+            ),
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('blog_content')
+                .setLabel('Content')
+                .setStyle(TextInputStyle.Paragraph)
+                .setValue(data.content.substring(0, 4000))
+                .setRequired(true)
+                .setMaxLength(4000)
+            )
+          );
+
+        await message.author.send({ 
+          content: `**Editing:** ${data.title}`,
+          components: new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`_placeholder`)
+              .setLabel('Modal will open next...')
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true)
+          )
+        }).then(() => message.author.showModal(modal)).catch(() => {
+          // Fallback: show modal directly
+          message.reply({ 
+            content: 'Check your DMs!',
+            components: []
+          }).then(msg => msg.author.showModal(modal)).catch(() => {
+            // If DM fails, show inline
+            message.reply(`✏️ **Editing Post #${num}**: ${data.title}\n\nUse \`!edit-title ${num} [new title]\` and \`!edit-content ${num} [new content]\``);
+          });
+        });
+
+        return;
+      }
+
+      await message.reply(`❌ Blog post #${target} not found. Run \`!blogs\` to see the list.`);
+    } catch (error) {
+      console.error('Edit error:', error);
+      await message.reply('❌ Error editing blog post');
+    }
+    return;
+  }
+
+  // !delete-blog [number] - Delete a published blog post
+  if (command === 'delete-blog') {
+    const target = args.slice(1).join(' ');
+    
+    if (!target) {
+      await message.reply('❓ Usage: `!delete-blog 1`\nRun `!blogs` first to see numbers.');
+      return;
+    }
+
+    try {
+      const num = parseInt(target);
+      if (!isNaN(num) && global.blogList && global.blogList[num - 1]) {
+        const item = global.blogList[num - 1];
+        const data = item.data;
+        
+        // Store confirmation session
+        const confirmSessionId = Date.now();
+        blogSessions.set(confirmSessionId, {
+          deleteFile: item.file,
+          deleteData: data
+        });
+
+        const confirmRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`blog_confirm_delete_${confirmSessionId}`)
+            .setLabel('⚠️ Yes, Delete It')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId(`blog_cancel_delete_${confirmSessionId}`)
+            .setLabel('❌ Cancel')
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        const confirmEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('⚠️ Delete Blog Post?')
+          .addFields(
+            { name: '📝 Title', value: data.title, inline: false },
+            { name: '⚠️ Warning', value: 'This CANNOT be undone!', inline: false }
+          )
+          .setFooter({ text: 'Choose carefully' });
+
+        await message.reply({ embeds: [confirmEmbed], components: [confirmRow] });
+        return;
+      }
+
+      await message.reply(`❌ Blog post #${target} not found. Run \`!blogs\` to see the list.`);
+    } catch (error) {
+      console.error('Delete-blog error:', error);
+      await message.reply('❌ Error deleting blog post');
+    }
     return;
   }
 });
@@ -938,6 +1116,215 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setColor(0xFF0000)
         .setTitle('❌ Blog Post Cancelled')
         .setDescription('The blog post was not published.');
+
+      await safeReply(interaction, { embeds: [embed], components: [] });
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // EDIT PUBLISHED BLOG POST MODAL
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('blog_edit_published_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3]);
+      const session = blogSessions.get(sessionId);
+
+      if (!session || !session.isEditing) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      const newTitle = interaction.fields.getTextInputValue('blog_title');
+      const newContent = interaction.fields.getTextInputValue('blog_content');
+
+      // Update session
+      session.editData.title = newTitle;
+      session.editData.content = newContent;
+
+      const buttonRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`blog_edit_again_${sessionId}`)
+          .setLabel('✏️ Edit Again')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`blog_save_edits_${sessionId}`)
+          .setLabel('💾 Save Changes')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`blog_discard_edits_${sessionId}`)
+          .setLabel('❌ Discard')
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      const previewEmbed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle(`📝 ${newTitle}`)
+        .setDescription(newContent.substring(0, 4000))
+        .addFields(
+          { name: '📁 Category', value: session.editData.category || 'N/A', inline: true },
+          { name: '✍️ Author', value: session.editData.author || 'N/A', inline: true }
+        )
+        .setFooter({ text: 'Review and save your changes' });
+
+      await safeReply(interaction, { embeds: [previewEmbed], components: [buttonRow] });
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // EDIT AGAIN BUTTON (Re-open edit modal)
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_edit_again_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3]);
+      const session = blogSessions.get(sessionId);
+
+      if (!session || !session.isEditing) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId(`blog_edit_published_${sessionId}`)
+        .setTitle('Edit Blog Post')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('blog_title')
+              .setLabel('Title')
+              .setStyle(TextInputStyle.Short)
+              .setValue(session.editData.title)
+              .setRequired(true)
+              .setMaxLength(200)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('blog_content')
+              .setLabel('Content')
+              .setStyle(TextInputStyle.Paragraph)
+              .setValue(session.editData.content.substring(0, 4000))
+              .setRequired(true)
+              .setMaxLength(4000)
+          )
+        );
+
+      await interaction.showModal(modal);
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // SAVE EDITS BUTTON
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_save_edits_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3]);
+      const session = blogSessions.get(sessionId);
+
+      if (!session || !session.isEditing) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      await safeDeferReply(interaction);
+
+      try {
+        const filepath = path.join(BLOG_DIR, session.editFile);
+        
+        // Save updated post
+        await writeFile(filepath, JSON.stringify(session.editData, null, 2));
+
+        console.log('\n✅ BLOG UPDATED:', session.editData.title);
+        console.log(`   → File: ${session.editFile}`);
+        console.log(`   → Author: ${session.editData.author}`);
+
+        const successEmbed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Blog Post Updated!')
+          .addFields(
+            { name: '📝 Title', value: session.editData.title, inline: false },
+            { name: '✍️ Author', value: session.editData.author, inline: true },
+            { name: '🔄 Status', value: 'Live on website', inline: true }
+          )
+          .setFooter({ text: 'Changes appear immediately!' });
+
+        await interaction.editReply({ embeds: [successEmbed], components: [] });
+
+        blogSessions.delete(sessionId);
+
+      } catch (error) {
+        console.error('Blog update error:', error);
+        const errorEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('❌ Update Failed')
+          .setDescription(`Error: ${error.message}`);
+        await interaction.editReply({ embeds: [errorEmbed], components: [] });
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // DISCARD EDITS BUTTON
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_discard_edits_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3]);
+      blogSessions.delete(sessionId);
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('❌ Edits Discarded')
+        .setDescription('The blog post was not changed.');
+
+      await safeReply(interaction, { embeds: [embed], components: [] });
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // CONFIRM DELETE BUTTON
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_confirm_delete_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3]);
+      const session = blogSessions.get(sessionId);
+
+      if (!session || !session.deleteFile) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      await safeDeferReply(interaction);
+
+      try {
+        const filepath = path.join(BLOG_DIR, session.deleteFile);
+        
+        // Delete the file
+        await unlink(filepath);
+
+        console.log('\n🗑️ BLOG DELETED:', session.deleteData.title);
+        console.log(`   → File: ${session.deleteFile}`);
+        console.log(`   → Author: ${session.deleteData.author}`);
+
+        const successEmbed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Blog Post Deleted')
+          .addFields(
+            { name: '📝 Title', value: session.deleteData.title, inline: false },
+            { name: '🗑️ Status', value: 'Removed from website', inline: true }
+          )
+          .setFooter({ text: 'Post is no longer visible' });
+
+        await interaction.editReply({ embeds: [successEmbed], components: [] });
+
+        blogSessions.delete(sessionId);
+        // Refresh the blog list
+        global.blogList = [];
+
+      } catch (error) {
+        console.error('Blog delete error:', error);
+        const errorEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('❌ Delete Failed')
+          .setDescription(`Error: ${error.message}`);
+        await interaction.editReply({ embeds: [errorEmbed], components: [] });
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // CANCEL DELETE BUTTON
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_cancel_delete_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3]);
+      blogSessions.delete(sessionId);
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFF0000)
+        .setTitle('❌ Delete Cancelled')
+        .setDescription('The blog post was NOT deleted.');
 
       await safeReply(interaction, { embeds: [embed], components: [] });
     }
