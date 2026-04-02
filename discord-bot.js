@@ -642,7 +642,7 @@ client.on(Events.MessageCreate, async (message) => {
         const data = item.data;
         
         // Store edit session
-        const editSessionId = Date.now();
+        const editSessionId = num;
         blogSessions.set(editSessionId, {
           editFile: item.file,
           editData: JSON.parse(JSON.stringify(data)), // Deep copy
@@ -650,50 +650,26 @@ client.on(Events.MessageCreate, async (message) => {
           isEditing: true
         });
 
-        const modal = new ModalBuilder()
-          .setCustomId(`blog_edit_published_${editSessionId}`)
-          .setTitle('Edit Blog Post')
-          .addComponents(
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('blog_title')
-                .setLabel('Title')
-                .setStyle(TextInputStyle.Short)
-                .setValue(data.title)
-                .setRequired(true)
-                .setMaxLength(200)
-            ),
-            new ActionRowBuilder().addComponents(
-              new TextInputBuilder()
-                .setCustomId('blog_content')
-                .setLabel('Content')
-                .setStyle(TextInputStyle.Paragraph)
-                .setValue(data.content.substring(0, 4000))
-                .setRequired(true)
-                .setMaxLength(4000)
-            )
+        const embed = new EmbedBuilder()
+          .setColor(0x2BA5D7)
+          .setTitle(`✏️ Editing Post #${num}`)
+          .addFields(
+            { name: '📝 Title', value: data.title, inline: false },
+            { name: '📄 Content', value: data.content.substring(0, 500) + (data.content.length > 500 ? '...' : ''), inline: false }
+          )
+          .setFooter({ text: 'Now use the commands below to edit' });
+
+        const helpEmbed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('Commands to edit:')
+          .addFields(
+            { name: `!edit-title ${num} [new title]`, value: 'Update the title', inline: false },
+            { name: `!edit-content ${num} [new content]`, value: 'Update the content', inline: false },
+            { name: `!save ${num}`, value: 'Save changes to website', inline: false },
+            { name: `!cancel ${num}`, value: 'Cancel editing', inline: false }
           );
 
-        await message.author.send({ 
-          content: `**Editing:** ${data.title}`,
-          components: new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`_placeholder`)
-              .setLabel('Modal will open next...')
-              .setStyle(ButtonStyle.Secondary)
-              .setDisabled(true)
-          )
-        }).then(() => message.author.showModal(modal)).catch(() => {
-          // Fallback: show modal directly
-          message.reply({ 
-            content: 'Check your DMs!',
-            components: []
-          }).then(msg => msg.author.showModal(modal)).catch(() => {
-            // If DM fails, show inline
-            message.reply(`✏️ **Editing Post #${num}**: ${data.title}\n\nUse \`!edit-title ${num} [new title]\` and \`!edit-content ${num} [new content]\``);
-          });
-        });
-
+        await message.reply({ embeds: [embed, helpEmbed] });
         return;
       }
 
@@ -702,6 +678,135 @@ client.on(Events.MessageCreate, async (message) => {
       console.error('Edit error:', error);
       await message.reply('❌ Error editing blog post');
     }
+    return;
+  }
+
+  // !edit-title [number] [new title]
+  if (command === 'edit-title') {
+    const num = parseInt(args[1]);
+    const newTitle = args.slice(2).join(' ');
+
+    if (!newTitle) {
+      await message.reply(`❓ Usage: \`!edit-title 1 Your New Title Here\``);
+      return;
+    }
+
+    const session = blogSessions.get(num);
+    if (!session || !session.isEditing) {
+      await message.reply(`❌ Not editing post #${num}. Run \`!edit ${num}\` first.`);
+      return;
+    }
+
+    session.editData.title = newTitle;
+    const embed = new EmbedBuilder()
+      .setColor(0x7CB342)
+      .setTitle('✅ Title Updated')
+      .addFields(
+        { name: '📝 New Title', value: newTitle, inline: false },
+        { name: 'Next Step', value: `Use \`!edit-content ${num} [new content]\` or \`!save ${num}\``, inline: false }
+      );
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !edit-content [number] [new content]
+  if (command === 'edit-content') {
+    const num = parseInt(args[1]);
+    const newContent = args.slice(2).join(' ');
+
+    if (!newContent) {
+      await message.reply(`❓ Usage: \`!edit-content 1 Your new content here...\``);
+      return;
+    }
+
+    const session = blogSessions.get(num);
+    if (!session || !session.isEditing) {
+      await message.reply(`❌ Not editing post #${num}. Run \`!edit ${num}\` first.`);
+      return;
+    }
+
+    session.editData.content = newContent;
+    const embed = new EmbedBuilder()
+      .setColor(0x7CB342)
+      .setTitle('✅ Content Updated')
+      .addFields(
+        { name: '📄 New Content Preview', value: newContent.substring(0, 300) + (newContent.length > 300 ? '...' : ''), inline: false },
+        { name: 'Next Step', value: `Use \`!save ${num}\` to save changes`, inline: false }
+      );
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !save [number] - Save edited blog post
+  if (command === 'save') {
+    const target = args.slice(1).join(' ');
+    const num = parseInt(target);
+
+    if (!num) {
+      await message.reply('❓ Usage: `!save 1`');
+      return;
+    }
+
+    const session = blogSessions.get(num);
+    if (!session || !session.isEditing) {
+      await message.reply(`❌ Not editing post #${num}. Run \`!edit ${num}\` first.`);
+      return;
+    }
+
+    try {
+      const filepath = path.join(BLOG_DIR, session.editFile);
+      
+      // Save updated post
+      await writeFile(filepath, JSON.stringify(session.editData, null, 2));
+
+      console.log('\n✅ BLOG UPDATED:', session.editData.title);
+      console.log(`   → File: ${session.editFile}`);
+      console.log(`   → Author: ${session.editData.author}`);
+
+      const successEmbed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle('✅ Blog Post Saved!')
+        .addFields(
+          { name: '📝 Title', value: session.editData.title, inline: false },
+          { name: '✍️ Author', value: session.editData.author || 'Unknown', inline: true },
+          { name: '🔄 Status', value: 'Live on website NOW!', inline: true }
+        )
+        .setFooter({ text: 'Changes appear immediately!' });
+
+      await message.reply({ embeds: [successEmbed] });
+
+      blogSessions.delete(num);
+
+    } catch (error) {
+      console.error('Blog save error:', error);
+      await message.reply(`❌ Error saving: ${error.message}`);
+    }
+    return;
+  }
+
+  // !cancel [number] - Cancel editing
+  if (command === 'cancel') {
+    const target = args.slice(1).join(' ');
+    const num = parseInt(target);
+
+    if (!num) {
+      await message.reply('❓ Usage: `!cancel 1`');
+      return;
+    }
+
+    const session = blogSessions.get(num);
+    if (!session || !session.isEditing) {
+      await message.reply(`❌ Not editing post #${num}.`);
+      return;
+    }
+
+    blogSessions.delete(num);
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('❌ Editing Cancelled')
+      .setDescription('No changes were saved.');
+
+    await message.reply({ embeds: [embed] });
     return;
   }
 
@@ -1116,152 +1221,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setColor(0xFF0000)
         .setTitle('❌ Blog Post Cancelled')
         .setDescription('The blog post was not published.');
-
-      await safeReply(interaction, { embeds: [embed], components: [] });
-    }
-
-    // ───────────────────────────────────────────────────────────────────────────────
-    // EDIT PUBLISHED BLOG POST MODAL
-    // ───────────────────────────────────────────────────────────────────────────────
-    if (interaction.isModalSubmit() && interaction.customId.startsWith('blog_edit_published_')) {
-      const sessionId = parseInt(interaction.customId.split('_')[3]);
-      const session = blogSessions.get(sessionId);
-
-      if (!session || !session.isEditing) {
-        return await safeReply(interaction, '❌ Session expired.');
-      }
-
-      const newTitle = interaction.fields.getTextInputValue('blog_title');
-      const newContent = interaction.fields.getTextInputValue('blog_content');
-
-      // Update session
-      session.editData.title = newTitle;
-      session.editData.content = newContent;
-
-      const buttonRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`blog_edit_again_${sessionId}`)
-          .setLabel('✏️ Edit Again')
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId(`blog_save_edits_${sessionId}`)
-          .setLabel('💾 Save Changes')
-          .setStyle(ButtonStyle.Success),
-        new ButtonBuilder()
-          .setCustomId(`blog_discard_edits_${sessionId}`)
-          .setLabel('❌ Discard')
-          .setStyle(ButtonStyle.Danger)
-      );
-
-      const previewEmbed = new EmbedBuilder()
-        .setColor(0x7CB342)
-        .setTitle(`📝 ${newTitle}`)
-        .setDescription(newContent.substring(0, 4000))
-        .addFields(
-          { name: '📁 Category', value: session.editData.category || 'N/A', inline: true },
-          { name: '✍️ Author', value: session.editData.author || 'N/A', inline: true }
-        )
-        .setFooter({ text: 'Review and save your changes' });
-
-      await safeReply(interaction, { embeds: [previewEmbed], components: [buttonRow] });
-    }
-
-    // ───────────────────────────────────────────────────────────────────────────────
-    // EDIT AGAIN BUTTON (Re-open edit modal)
-    // ───────────────────────────────────────────────────────────────────────────────
-    if (interaction.isButton() && interaction.customId.startsWith('blog_edit_again_')) {
-      const sessionId = parseInt(interaction.customId.split('_')[3]);
-      const session = blogSessions.get(sessionId);
-
-      if (!session || !session.isEditing) {
-        return await safeReply(interaction, '❌ Session expired.');
-      }
-
-      const modal = new ModalBuilder()
-        .setCustomId(`blog_edit_published_${sessionId}`)
-        .setTitle('Edit Blog Post')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('blog_title')
-              .setLabel('Title')
-              .setStyle(TextInputStyle.Short)
-              .setValue(session.editData.title)
-              .setRequired(true)
-              .setMaxLength(200)
-          ),
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('blog_content')
-              .setLabel('Content')
-              .setStyle(TextInputStyle.Paragraph)
-              .setValue(session.editData.content.substring(0, 4000))
-              .setRequired(true)
-              .setMaxLength(4000)
-          )
-        );
-
-      await interaction.showModal(modal);
-    }
-
-    // ───────────────────────────────────────────────────────────────────────────────
-    // SAVE EDITS BUTTON
-    // ───────────────────────────────────────────────────────────────────────────────
-    if (interaction.isButton() && interaction.customId.startsWith('blog_save_edits_')) {
-      const sessionId = parseInt(interaction.customId.split('_')[3]);
-      const session = blogSessions.get(sessionId);
-
-      if (!session || !session.isEditing) {
-        return await safeReply(interaction, '❌ Session expired.');
-      }
-
-      await safeDeferReply(interaction);
-
-      try {
-        const filepath = path.join(BLOG_DIR, session.editFile);
-        
-        // Save updated post
-        await writeFile(filepath, JSON.stringify(session.editData, null, 2));
-
-        console.log('\n✅ BLOG UPDATED:', session.editData.title);
-        console.log(`   → File: ${session.editFile}`);
-        console.log(`   → Author: ${session.editData.author}`);
-
-        const successEmbed = new EmbedBuilder()
-          .setColor(0x7CB342)
-          .setTitle('✅ Blog Post Updated!')
-          .addFields(
-            { name: '📝 Title', value: session.editData.title, inline: false },
-            { name: '✍️ Author', value: session.editData.author, inline: true },
-            { name: '🔄 Status', value: 'Live on website', inline: true }
-          )
-          .setFooter({ text: 'Changes appear immediately!' });
-
-        await interaction.editReply({ embeds: [successEmbed], components: [] });
-
-        blogSessions.delete(sessionId);
-
-      } catch (error) {
-        console.error('Blog update error:', error);
-        const errorEmbed = new EmbedBuilder()
-          .setColor(0xFF0000)
-          .setTitle('❌ Update Failed')
-          .setDescription(`Error: ${error.message}`);
-        await interaction.editReply({ embeds: [errorEmbed], components: [] });
-      }
-    }
-
-    // ───────────────────────────────────────────────────────────────────────────────
-    // DISCARD EDITS BUTTON
-    // ───────────────────────────────────────────────────────────────────────────────
-    if (interaction.isButton() && interaction.customId.startsWith('blog_discard_edits_')) {
-      const sessionId = parseInt(interaction.customId.split('_')[3]);
-      blogSessions.delete(sessionId);
-
-      const embed = new EmbedBuilder()
-        .setColor(0xFF0000)
-        .setTitle('❌ Edits Discarded')
-        .setDescription('The blog post was not changed.');
 
       await safeReply(interaction, { embeds: [embed], components: [] });
     }
