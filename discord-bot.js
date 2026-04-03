@@ -33,6 +33,7 @@ const METADATA_DIR = path.join(BASE_DIR, 'public', 'media-metadata');
 const BLOG_DIR = path.join(BASE_DIR, 'public', 'blog-posts');
 const BLOG_IMAGES_DIR = path.join(BASE_DIR, 'public', 'blog-images');
 const DEFAULT_BLOG_AUTHOR = process.env.DEFAULT_BLOG_AUTHOR || 'Darsh Gajera';
+const MAX_BLOG_IMAGES = 6;
 
 const BLOG_LOGO_CANDIDATES = [
   path.join(BASE_DIR, 'public', 'logo.png'),
@@ -137,6 +138,44 @@ function scheduleSessionCleanup(timestamp) {
       console.log(`🧹 Session ${timestamp} cleaned up`);
     }
   }, SESSION_TIMEOUT_MS);
+}
+
+async function saveBlogAttachments(attachments, maxImages = MAX_BLOG_IMAGES) {
+  const imageAttachments = [...attachments.values()]
+    .filter(att => att.contentType?.startsWith('image'))
+    .slice(0, maxImages);
+
+  if (imageAttachments.length === 0) {
+    return [];
+  }
+
+  await mkdir(BLOG_IMAGES_DIR, { recursive: true });
+  const savedFilenames = [];
+
+  for (const attachment of imageAttachments) {
+    try {
+      const response = await fetch(attachment.url);
+      if (!response.ok) {
+        console.log(`   ⚠️ Failed to download ${attachment.name}: ${response.status}`);
+        continue;
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const baseName = attachment.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '-');
+      const filename = `${Date.now()}-${baseName}.webp`;
+
+      await sharp(buffer)
+        .resize(1200, 630, { fit: 'cover' })
+        .webp({ quality: 85 })
+        .toFile(path.join(BLOG_IMAGES_DIR, filename));
+
+      savedFilenames.push(filename);
+    } catch (err) {
+      console.log(`   ⚠️ Failed to process attachment ${attachment.name}: ${err.message}`);
+    }
+  }
+
+  return savedFilenames;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -308,7 +347,8 @@ Category: ${category}
 Requirements:
 - Write in a warm, inspiring tone
 - Include a catchy title
-- Write 3-5 paragraphs
+- Write at least 6 paragraphs
+- Write at least 700 words (roughly one full page)
 - End with a call to action
 - Make it suitable for a nonprofit website
 - Do NOT use markdown formatting like ** or ## - just plain text with natural paragraphs
@@ -328,7 +368,7 @@ CONTENT:
       model: 'llama-3.3-70b-versatile',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      max_tokens: 1500
+      max_tokens: 2200
     })
   });
 
@@ -366,16 +406,25 @@ async function saveBlogPost(blogData) {
   // Generate AI image for the blog post
   let imageFilename = null;
   let imageType = null;
+  const inlineImages = [];
+
+  if (Array.isArray(blogData.userImages) && blogData.userImages.length > 0) {
+    imageFilename = blogData.userImages[0];
+    imageType = 'upload';
+    inlineImages.push(...blogData.userImages.slice(1));
+  }
   
   // If user provided an image, use that
-  if (blogData.userImage) {
+  if (!imageFilename && blogData.userImage) {
     imageFilename = blogData.userImage;
     imageType = 'upload';
   } else {
     // Generate AI image
-    imageFilename = await generateBlogImage(blogData.title, blogData.category);
-    if (imageFilename) {
-      imageType = 'ai';
+    if (!imageFilename) {
+      imageFilename = await generateBlogImage(blogData.title, blogData.category);
+      if (imageFilename) {
+        imageType = 'ai';
+      }
     }
   }
   
@@ -389,7 +438,8 @@ async function saveBlogPost(blogData) {
     published: new Date().toISOString(),
     status: 'published',
     image: imageFilename,
-    imageType: imageType
+    imageType: imageType,
+    inlineImages
   };
   
   await writeFile(filepath, JSON.stringify(post, null, 2));
@@ -451,6 +501,7 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '!delete all', value: 'Delete ALL uploads', inline: true },
         { name: '!addcategory [name]', value: 'Add new gallery category', inline: true },
         { name: '!blog [topic]', value: 'Generate AI blog post with image', inline: true },
+        { name: '!blog-images [sessionId]', value: 'Attach more blog images (up to 6 total)', inline: true },
         { name: '📝 BLOG MANAGEMENT', value: '─────────────────────────────', inline: false },
         { name: '!blogs', value: 'List all published blog posts', inline: true },
         { name: '!edit [number]', value: 'Edit a published blog post', inline: true },
@@ -602,6 +653,43 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
+  // !blog-images [sessionId] - attach more images after starting !blog
+  if (command === 'blog-images') {
+    const sessionId = parseInt(args[1], 10);
+
+    if (!sessionId || !blogSessions.has(sessionId)) {
+      await message.reply('❓ Usage: `!blog-images SESSION_ID` and attach images in the same message.');
+      return;
+    }
+
+    const session = blogSessions.get(sessionId);
+    if (session.userId !== message.author.id) {
+      await message.reply('❌ Only the original author can add images to this draft session.');
+      return;
+    }
+
+    const remaining = Math.max(0, MAX_BLOG_IMAGES - (session.userImages?.length || 0));
+    if (remaining === 0) {
+      await message.reply(`⚠️ You already reached the limit of ${MAX_BLOG_IMAGES} images.`);
+      return;
+    }
+
+    const newlySaved = await saveBlogAttachments(message.attachments, remaining);
+    if (newlySaved.length === 0) {
+      await message.reply('❌ No valid image attachment found. Attach images and run command again.');
+      return;
+    }
+
+    session.userImages = [...(session.userImages || []), ...newlySaved];
+    session.userImage = session.userImages[0] || null;
+
+    await message.reply(
+      `✅ Added ${newlySaved.length} image(s). Total: ${session.userImages.length}/${MAX_BLOG_IMAGES}.\n` +
+      `First image = hero, remaining images = inline article images.`
+    );
+    return;
+  }
+
   // !blog [topic]
   if (command === 'blog') {
     const topic = args.slice(1).join(' ');
@@ -616,34 +704,9 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    // Check if user attached an image
-    let userImageFilename = null;
-    const images = [...message.attachments.values()].filter(
-      att => att.contentType?.startsWith('image')
-    );
-    
-    if (images.length > 0) {
-      const attachment = images[0];
-      console.log(`   📷 User attached image: ${attachment.name}`);
-      
-      try {
-        await mkdir(BLOG_IMAGES_DIR, { recursive: true });
-        const response = await fetch(attachment.url);
-        const buffer = Buffer.from(await response.arrayBuffer());
-        
-        userImageFilename = `${Date.now()}-${attachment.name.replace(/\.[^/.]+$/, '')}.webp`;
-        
-        await sharp(buffer)
-          .resize(1200, 630, { fit: 'cover' })
-          .webp({ quality: 85 })
-          .toFile(path.join(BLOG_IMAGES_DIR, userImageFilename));
-        
-        console.log(`   ✅ User image saved: ${userImageFilename}`);
-      } catch (err) {
-        console.error('   ⚠️ Failed to save user image:', err.message);
-        userImageFilename = null;
-      }
-    }
+    // Save attached images (up to MAX_BLOG_IMAGES)
+    const userImages = await saveBlogAttachments(message.attachments, MAX_BLOG_IMAGES);
+    const userImageFilename = userImages[0] || null;
 
     // Store session for this blog
     const timestamp = Date.now();
@@ -652,6 +715,7 @@ client.on(Events.MessageCreate, async (message) => {
       userId: message.author.id,
       username: message.author.username,
       authorName: DEFAULT_BLOG_AUTHOR,
+      userImages,
       userImage: userImageFilename
     });
 
@@ -675,7 +739,14 @@ client.on(Events.MessageCreate, async (message) => {
       .addFields(
         { name: '📝 Topic', value: topic, inline: false },
         { name: '✍️ Author', value: DEFAULT_BLOG_AUTHOR, inline: false },
-        { name: '🖼️ Image', value: userImageFilename ? '✅ Your uploaded image will be used' : '🎨 AI will generate a featured image', inline: false }
+        { name: '🆔 Session ID', value: String(timestamp), inline: false },
+        {
+          name: '🖼️ Images',
+          value: userImages.length > 0
+            ? `✅ ${userImages.length} uploaded. Image #1 will be hero; others appear inline.`
+            : `No images uploaded yet. Attach images with \`!blog-images ${timestamp}\` (up to ${MAX_BLOG_IMAGES}). If none, AI/fallback hero is used.`,
+          inline: false
+        }
       )
       .setFooter({ text: 'Step 1 of 3: Choose a category' });
 
@@ -1164,7 +1235,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .addFields(
             { name: '📁 Category', value: session.category, inline: true },
             { name: '✍️ Author', value: session.authorName || DEFAULT_BLOG_AUTHOR, inline: true },
-            { name: '🖼️ Image', value: session.userImage ? '📷 Your upload' : '🎨 AI will generate', inline: true }
+            {
+              name: '🖼️ Images',
+              value: session.userImages?.length
+                ? `📷 ${session.userImages.length} uploaded (${session.userImage ? 'hero ready' : 'pending'})`
+                : '🎨 AI/fallback hero will generate',
+              inline: true
+            },
+            { name: '➕ Add More Images', value: `Attach images with \`!blog-images ${timestamp}\` before pressing Publish.`, inline: false }
           )
           .setFooter({ text: 'Review and publish or edit' });
 
@@ -1287,6 +1365,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           content: session.generatedContent,
           category: session.category,
           author: session.authorName || DEFAULT_BLOG_AUTHOR,
+          userImages: session.userImages,
           userImage: session.userImage
         });
 

@@ -43,6 +43,12 @@ export default function BlogPreviewPage() {
     }
   ];
 
+  const inlineImages = [
+    'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?w=1400&h=900&fit=crop',
+    'https://images.unsplash.com/photo-1469571486292-b53601020f90?w=1400&h=900&fit=crop',
+    'https://images.unsplash.com/photo-1593113598332-cd59a93a9f24?w=1400&h=900&fit=crop'
+  ];
+
   const imageSrc = useUploadedImage ? post.uploadedHero : post.aiHero;
   const paragraphs = post.content.split('\n\n').filter((p) => p.trim());
 
@@ -128,14 +134,25 @@ export default function BlogPreviewPage() {
 
             <div className="px-6 py-10 sm:px-10 sm:py-12">
               {paragraphs.map((paragraph, idx) => (
-                <p
-                  key={idx}
-                  className={`article-rise mb-7 leading-8 text-slate-700 ${idx === 0 ? 'text-xl text-slate-900' : 'text-lg'}`}
-                  style={{ animationDelay: `${120 + idx * 70}ms`, fontVariationSettings: idx === 0 ? "'wght' 600" : "'wght' 430" }}
-                >
-                  {paragraph}
-                </p>
+                <div key={`block-${idx}`}>
+                  <p
+                    className={`article-rise mb-7 leading-8 text-slate-700 ${idx === 0 ? 'text-xl text-slate-900' : 'text-lg'}`}
+                    style={{ animationDelay: `${120 + idx * 70}ms`, fontVariationSettings: idx === 0 ? "'wght' 600" : "'wght' 430" }}
+                  >
+                    {paragraph}
+                  </p>
+
+                  {inlineImages[idx] && (
+                    <figure className="article-rise mb-8 overflow-hidden rounded-2xl border border-slate-200 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.55)]" style={{ animationDelay: `${160 + idx * 70}ms` }}>
+                      <img src={inlineImages[idx]} alt={`Inline visual ${idx + 1}`} className="h-auto w-full object-cover transition duration-500 hover:scale-[1.02]" />
+                    </figure>
+                  )}
+                </div>
               ))}
+
+              <div className="article-rise rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                Multi-image preview: first image = hero, next images flow inline between paragraphs in a magazine-style rhythm.
+              </div>
             </div>
 
             <section className="border-t border-slate-200 bg-gradient-to-br from-[#e8f4f8] to-[#f0f8e8] px-6 py-10 sm:px-10">
@@ -163,7 +180,7 @@ export default function BlogPreviewPage() {
             </div>
 
             {morePosts.map((item, idx) => (
-              <article key={item.title} className="card-pop overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" style={{ animationDelay: `${idx * 90}ms` }}>
+              <article key={item.title} className="card-pop overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg" style={{ animationDelay: `${idx * 90}ms` }}>
                 <div className="h-32 overflow-hidden">
                   <img src={item.image} alt={item.title} className="h-full w-full object-cover transition duration-500 hover:scale-105" />
                 </div>

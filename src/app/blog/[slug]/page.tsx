@@ -2,6 +2,7 @@ import { readdir, readFile } from 'fs/promises';
 import path from 'path';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import type { ReactNode } from 'react';
 
 // FORCE DYNAMIC - No rebuild needed!
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,7 @@ interface BlogPost {
   published: string;
   image?: string;
   imageType?: string;
+  inlineImages?: string[];
 }
 
 async function getBlogPost(slug: string): Promise<BlogPost | null> {
@@ -52,20 +54,54 @@ export default async function BlogPostPage({
 
   // Image path - images are stored in /blog-images/
   const imageSrc = post.image ? `/blog-images/${post.image}` : null;
+  const inlineImages = (post.inlineImages || []).map((img) => `/blog-images/${img}`);
+  const paragraphs = post.content.split('\n\n').filter((p) => p.trim());
+
+  const contentBlocks: ReactNode[] = [];
+  let inlineCursor = 0;
+
+  paragraphs.forEach((paragraph, idx) => {
+    contentBlocks.push(
+      <p key={`p-${idx}`} className={`text-slate-700 leading-8 mb-6 ${idx === 0 ? 'text-xl text-slate-900' : 'text-lg'}`}>
+        {paragraph}
+      </p>
+    );
+
+    const shouldPlaceImage = inlineCursor < inlineImages.length && (idx === 0 || (idx + 1) % 2 === 0);
+    if (shouldPlaceImage) {
+      const imagePath = inlineImages[inlineCursor];
+      contentBlocks.push(
+        <figure key={`img-${idx}-${inlineCursor}`} className="my-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_-30px_rgba(0,0,0,0.6)]">
+          <img src={imagePath} alt={`${post.title} image ${inlineCursor + 1}`} className="h-auto w-full object-cover" />
+        </figure>
+      );
+      inlineCursor += 1;
+    }
+  });
+
+  while (inlineCursor < inlineImages.length) {
+    const imagePath = inlineImages[inlineCursor];
+    contentBlocks.push(
+      <figure key={`img-tail-${inlineCursor}`} className="my-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_-30px_rgba(0,0,0,0.6)]">
+        <img src={imagePath} alt={`${post.title} image ${inlineCursor + 1}`} className="h-auto w-full object-cover" />
+      </figure>
+    );
+    inlineCursor += 1;
+  }
 
   return (
-    <main className="bg-white min-h-screen">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#f0fdf4_0%,#f8fafc_45%,#ffffff_100%)]">
       {/* Header */}
-      <section className="py-12 px-4 sm:px-6 bg-gradient-to-br from-[#E8F4F8] to-[#F0F8E8]">
-        <div className="max-w-4xl mx-auto">
-          <Link href="/blog" className="text-[#2BA5D7] hover:text-[#1E5A96] font-semibold mb-4 inline-block">
+      <section className="py-12 px-4 sm:px-6 bg-gradient-to-br from-[#0f704f] via-[#1a8a63] to-[#2ba5d7] text-white">
+        <div className="max-w-5xl mx-auto">
+          <Link href="/blog" className="text-white/95 hover:text-white font-semibold mb-4 inline-block">
             ← Back to Blog
           </Link>
-          <span className="block text-sm font-bold uppercase tracking-wide text-[#7CB342] mb-2">
+          <span className="inline-block text-xs font-bold uppercase tracking-wide bg-white/20 border border-white/30 rounded-full px-3 py-1 mb-4">
             {post.category.replace('-', ' ')}
           </span>
-          <h1 className="text-4xl lg:text-5xl font-black text-[#1E5A96] mb-4">{post.title}</h1>
-          <div className="flex items-center gap-4 text-gray-600">
+          <h1 className="text-4xl lg:text-6xl font-black mb-4">{post.title}</h1>
+          <div className="flex flex-wrap items-center gap-4 text-white/95">
             <span>By {post.author}</span>
             <span>•</span>
             <span>{new Date(post.published).toLocaleDateString('en-US', { 
@@ -80,14 +116,14 @@ export default async function BlogPostPage({
 
       {/* Hero Image */}
       {imageSrc && (
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 -mt-6 relative">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-6 relative">
           <img 
             src={imageSrc}
             alt={post.title}
-            className="w-full h-auto rounded-2xl shadow-lg"
+            className="w-full h-auto rounded-3xl shadow-[0_30px_70px_-35px_rgba(0,0,0,0.7)]"
           />
           {post.imageType === 'ai' && (
-            <div className="absolute top-4 right-8 bg-black/50 text-white text-sm px-3 py-1 rounded-full backdrop-blur-sm">
+            <div className="absolute top-4 right-8 bg-black/50 text-white text-xs sm:text-sm px-3 py-1 rounded-full backdrop-blur-sm">
               🎨 AI Generated
             </div>
           )}
@@ -96,12 +132,8 @@ export default async function BlogPostPage({
 
       {/* Content */}
       <section className="py-12 px-4 sm:px-6">
-        <div className="max-w-4xl mx-auto">
-          {post.content.split('\n\n').filter(p => p.trim()).map((paragraph, idx) => (
-            <p key={idx} className="text-gray-700 leading-relaxed mb-6 text-lg">
-              {paragraph}
-            </p>
-          ))}
+        <div className="max-w-4xl mx-auto rounded-3xl border border-slate-200 bg-white p-6 sm:p-10 shadow-[0_20px_60px_-38px_rgba(0,0,0,0.4)]">
+          {contentBlocks}
         </div>
       </section>
       
