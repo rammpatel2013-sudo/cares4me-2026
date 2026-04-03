@@ -1,8 +1,9 @@
-import { readdir, readFile } from 'fs/promises';
+import { access, readdir, readFile } from 'fs/promises';
 import path from 'path';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
+import sharp from 'sharp';
 
 // FORCE DYNAMIC - No rebuild needed!
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,60 @@ interface BlogPost {
 }
 
 type TextStyle = 'gradient' | 'glass' | 'plain';
+
+type ImageAsset = {
+  src: string;
+  width?: number;
+  height?: number;
+  orientation: 'portrait' | 'landscape' | 'square';
+};
+
+async function resolveImageAsset(imageName?: string): Promise<ImageAsset | null> {
+  if (!imageName) {
+    return null;
+  }
+
+  const publicDir = path.join(process.cwd(), 'public');
+  const candidateDirs = ['blog-images', 'uploads', 'images', 'cares4memedia', ''];
+
+  for (const dir of candidateDirs) {
+    const absolutePath = path.join(publicDir, dir, imageName);
+
+    try {
+      await access(absolutePath);
+
+      let width: number | undefined;
+      let height: number | undefined;
+
+      try {
+        const metadata = await sharp(absolutePath).metadata();
+        width = metadata.width;
+        height = metadata.height;
+      } catch {}
+
+      const orientation = width && height
+        ? width > height
+          ? 'landscape'
+          : height > width
+            ? 'portrait'
+            : 'square'
+        : 'landscape';
+
+      const relativePath = path.relative(publicDir, absolutePath).split(path.sep).join('/');
+      return {
+        src: `/${relativePath}`,
+        width,
+        height,
+        orientation,
+      };
+    } catch {}
+  }
+
+  return {
+    src: `/blog-images/${imageName}`,
+    orientation: 'landscape',
+  };
+}
 
 async function getPublishedPosts(): Promise<BlogPost[]> {
   const blogDir = path.join(process.cwd(), 'public', 'blog-posts');
@@ -68,9 +123,14 @@ export default async function BlogPostPage({
   const textStyle: TextStyle = requestedStyle === 'glass' || requestedStyle === 'plain' ? requestedStyle : 'gradient';
   const relatedPosts = allPosts.filter((item) => item.slug !== slug).slice(0, 4);
 
-  // Image path - images are stored in /blog-images/
-  const imageSrc = post.image ? `/blog-images/${post.image}` : null;
-  const inlineImages = (post.inlineImages || []).map((img) => `/blog-images/${img}`);
+  const heroAsset = await resolveImageAsset(post.image);
+  const inlineAssets = await Promise.all((post.inlineImages || []).map((img) => resolveImageAsset(img)));
+  const relatedPostAssets = await Promise.all(
+    relatedPosts.map(async (item) => ({
+      post: item,
+      asset: await resolveImageAsset(item.image),
+    }))
+  );
   const paragraphs = post.content.split('\n\n').filter((p) => p.trim());
   const dek = paragraphs[0]
     ? `${paragraphs[0].slice(0, 220).trim()}${paragraphs[0].length > 220 ? '...' : ''}`
@@ -79,7 +139,6 @@ export default async function BlogPostPage({
   const pullQuote = pullQuoteSource
     ? `${pullQuoteSource.slice(0, 180).trim()}${pullQuoteSource.length > 180 ? '...' : ''}`
     : 'Community stories should feel lived-in, human, and visually rich.';
-  const estimatedReadMinutes = Math.max(1, Math.round(post.content.split(/\s+/).filter(Boolean).length / 180));
 
   const textStyleClasses: Record<TextStyle, string> = {
     gradient:
@@ -92,6 +151,56 @@ export default async function BlogPostPage({
   let inlineCursor = 0;
 
   paragraphs.forEach((paragraph, idx) => {
+    const shouldPlaceImage = inlineCursor < inlineAssets.length && (idx === 0 || (idx + 1) % 2 === 0);
+    const imageAsset = shouldPlaceImage ? inlineAssets[inlineCursor] : null;
+
+    if (idx === 1) {
+      contentBlocks.push(
+        <blockquote
+          key="pull-quote"
+          className="my-10 border-y border-emerald-200 bg-[linear-gradient(135deg,rgba(240,253,244,0.95),rgba(236,254,255,0.9))] px-6 py-6 text-2xl font-black leading-tight text-slate-900 shadow-[0_20px_40px_-35px_rgba(16,185,129,0.8)] sm:px-8 sm:text-[2rem]"
+          style={{ fontVariationSettings: "'wght' 820" }}
+        >
+          “{pullQuote}”
+        </blockquote>
+      );
+    }
+
+    if (imageAsset && imageAsset.orientation === 'portrait' && idx !== 0) {
+      contentBlocks.push(
+        <section
+          key={`pair-${idx}-${inlineCursor}`}
+          className={`my-10 grid items-start gap-6 ${inlineCursor % 2 === 0 ? 'lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]' : 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]'}`}
+        >
+          {inlineCursor % 2 === 0 ? (
+            <figure className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)]">
+              <img
+                src={imageAsset.src}
+                alt={`${post.title} image ${inlineCursor + 1}`}
+                className="mx-auto block max-h-[72vh] w-auto max-w-full rounded-[1.2rem] object-contain"
+              />
+            </figure>
+          ) : (
+            <div className="mb-7 text-lg leading-8 text-slate-700 sm:text-[1.06rem]">{paragraph}</div>
+          )}
+
+          {inlineCursor % 2 === 0 ? (
+            <div className="mb-7 text-lg leading-8 text-slate-700 sm:text-[1.06rem]">{paragraph}</div>
+          ) : (
+            <figure className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)]">
+              <img
+                src={imageAsset.src}
+                alt={`${post.title} image ${inlineCursor + 1}`}
+                className="mx-auto block max-h-[72vh] w-auto max-w-full rounded-[1.2rem] object-contain"
+              />
+            </figure>
+          )}
+        </section>
+      );
+      inlineCursor += 1;
+      return;
+    }
+
     contentBlocks.push(
       idx === 0 ? (
         <p key={`p-${idx}`} className="mb-8 text-[1.18rem] leading-9 text-slate-800 sm:text-[1.28rem]">
@@ -107,35 +216,18 @@ export default async function BlogPostPage({
       )
     );
 
-    if (idx === 1) {
-      contentBlocks.push(
-        <blockquote
-          key="pull-quote"
-          className="my-10 border-y border-emerald-200 bg-[linear-gradient(135deg,rgba(240,253,244,0.95),rgba(236,254,255,0.9))] px-6 py-6 text-2xl font-black leading-tight text-slate-900 shadow-[0_20px_40px_-35px_rgba(16,185,129,0.8)] sm:px-8 sm:text-[2rem]"
-          style={{ fontVariationSettings: "'wght' 820" }}
-        >
-          “{pullQuote}”
-        </blockquote>
-      );
-    }
-
-    const shouldPlaceImage = inlineCursor < inlineImages.length && (idx === 0 || (idx + 1) % 2 === 0);
-    if (shouldPlaceImage) {
-      const imagePath = inlineImages[inlineCursor];
-      const editorialFigureClass =
-        inlineCursor % 2 === 0
-          ? 'lg:mr-12 lg:w-[88%]'
-          : 'lg:ml-12 lg:w-[88%]';
+    if (imageAsset) {
+      const figureClass =
+        imageAsset.orientation === 'landscape'
+          ? 'my-10 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)]'
+          : 'my-10 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)] lg:w-[82%]';
 
       contentBlocks.push(
-        <figure
-          key={`img-${idx}-${inlineCursor}`}
-          className={`my-10 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)] ${editorialFigureClass}`}
-        >
+        <figure key={`img-${idx}-${inlineCursor}`} className={figureClass}>
           <img
-            src={imagePath}
+            src={imageAsset.src}
             alt={`${post.title} image ${inlineCursor + 1}`}
-            className="mx-auto block max-h-[70vh] w-auto max-w-full rounded-[1.2rem] object-contain"
+            className="mx-auto block max-h-[75vh] w-auto max-w-full rounded-[1.2rem] object-contain"
           />
         </figure>
       );
@@ -143,11 +235,16 @@ export default async function BlogPostPage({
     }
   });
 
-  while (inlineCursor < inlineImages.length) {
-    const imagePath = inlineImages[inlineCursor];
+  while (inlineCursor < inlineAssets.length) {
+    const imageAsset = inlineAssets[inlineCursor];
+    if (!imageAsset) {
+      inlineCursor += 1;
+      continue;
+    }
+
     contentBlocks.push(
-      <figure key={`img-tail-${inlineCursor}`} className="my-10 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)] lg:w-[88%]">
-        <img src={imagePath} alt={`${post.title} image ${inlineCursor + 1}`} className="mx-auto block max-h-[70vh] w-auto max-w-full rounded-[1.2rem] object-contain" />
+      <figure key={`img-tail-${inlineCursor}`} className="my-10 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)]">
+        <img src={imageAsset.src} alt={`${post.title} image ${inlineCursor + 1}`} className="mx-auto block max-h-[75vh] w-auto max-w-full rounded-[1.2rem] object-contain" />
       </figure>
     );
     inlineCursor += 1;
@@ -180,10 +277,10 @@ export default async function BlogPostPage({
       </section>
 
       {/* Hero Image */}
-      {imageSrc && (
+      {heroAsset && (
         <div className="mx-auto mt-8 max-w-6xl px-4 sm:px-6">
-          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-[linear-gradient(145deg,#f8fafc,#e2f5ef)] p-4 shadow-[0_30px_70px_-35px_rgba(0,0,0,0.7)] sm:p-5">
-            <img src={imageSrc} alt={post.title} className="mx-auto block max-h-[78vh] w-auto max-w-full rounded-[1.5rem] object-contain" />
+          <div className={`relative overflow-hidden rounded-[2rem] border border-slate-200 bg-[linear-gradient(145deg,#f8fafc,#e2f5ef)] p-4 shadow-[0_30px_70px_-35px_rgba(0,0,0,0.7)] sm:p-5 ${heroAsset.orientation === 'portrait' ? 'lg:max-w-4xl' : ''}`}>
+            <img src={heroAsset.src} alt={post.title} className="mx-auto block max-h-[82vh] w-auto max-w-full rounded-[1.5rem] object-contain" />
             {post.imageType === 'ai' && (
               <div className="absolute right-4 top-4 rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur-sm sm:text-sm">
                 AI Generated
@@ -226,61 +323,22 @@ export default async function BlogPostPage({
             </div>
 
             <article className={`rounded-3xl border p-6 shadow-[0_20px_60px_-38px_rgba(0,0,0,0.4)] sm:p-10 ${textStyleClasses[textStyle]}`}>
-              <div className="mb-10 grid gap-4 border-b border-slate-200/80 pb-8 text-sm text-slate-600 sm:grid-cols-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Story Angle</p>
-                  <p className="mt-2 text-sm leading-6">A documented impact story shaped like a feature article instead of a basic blog card.</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Read Time</p>
-                  <p className="mt-2 text-sm leading-6">About {estimatedReadMinutes} min read</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Visual Rhythm</p>
-                  <p className="mt-2 text-sm leading-6">Hero image first, then editorial inline frames with more breathing room.</p>
-                </div>
-              </div>
-
               {contentBlocks}
             </article>
           </div>
 
           <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Story At A Glance</h3>
-              <div className="mt-4 space-y-3 text-sm text-slate-700">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Format</p>
-                  <p className="mt-1">Editorial post with layered visuals</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Default Canvas</p>
-                  <p className="mt-1">Gradient article background</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Images</p>
-                  <p className="mt-1">Contain-first display to avoid unexpected cropping</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h3 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Related Stories</h3>
-              <p className="mt-2 text-sm text-slate-600">The side tiles stay visible and act more like an editorial rail than a basic list.</p>
-            </div>
-
-            {relatedPosts.length > 0 ? (
-              relatedPosts.map((related) => {
-                const relatedImageSrc = related.image ? `/blog-images/${related.image}` : null;
+            {relatedPostAssets.length > 0 ? (
+              relatedPostAssets.map(({ post: related, asset }) => {
                 return (
                   <Link
                     key={related.id}
                     href={`/blog/${related.slug}`}
                     className="group block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <div className="h-32 overflow-hidden bg-slate-100">
-                      {relatedImageSrc ? (
-                        <img src={relatedImageSrc} alt={related.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                    <div className={`${asset?.orientation === 'portrait' ? 'h-56' : 'h-32'} overflow-hidden bg-slate-100`}>
+                      {asset ? (
+                        <img src={asset.src} alt={related.title} className="h-full w-full object-contain transition duration-500 group-hover:scale-105" />
                       ) : (
                         <div className="h-full w-full bg-gradient-to-br from-emerald-300 to-cyan-400" />
                       )}
