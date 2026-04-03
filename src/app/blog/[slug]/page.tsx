@@ -72,6 +72,14 @@ export default async function BlogPostPage({
   const imageSrc = post.image ? `/blog-images/${post.image}` : null;
   const inlineImages = (post.inlineImages || []).map((img) => `/blog-images/${img}`);
   const paragraphs = post.content.split('\n\n').filter((p) => p.trim());
+  const dek = paragraphs[0]
+    ? `${paragraphs[0].slice(0, 220).trim()}${paragraphs[0].length > 220 ? '...' : ''}`
+    : 'A closer look at the work, people, and community momentum behind this Care4ME story.';
+  const pullQuoteSource = paragraphs[Math.min(1, Math.max(paragraphs.length - 1, 0))] || paragraphs[0] || '';
+  const pullQuote = pullQuoteSource
+    ? `${pullQuoteSource.slice(0, 180).trim()}${pullQuoteSource.length > 180 ? '...' : ''}`
+    : 'Community stories should feel lived-in, human, and visually rich.';
+  const estimatedReadMinutes = Math.max(1, Math.round(post.content.split(/\s+/).filter(Boolean).length / 180));
 
   const textStyleClasses: Record<TextStyle, string> = {
     gradient:
@@ -85,17 +93,50 @@ export default async function BlogPostPage({
 
   paragraphs.forEach((paragraph, idx) => {
     contentBlocks.push(
-      <p key={`p-${idx}`} className={`text-slate-700 leading-8 mb-6 ${idx === 0 ? 'text-xl text-slate-900' : 'text-lg'}`}>
-        {paragraph}
-      </p>
+      idx === 0 ? (
+        <p key={`p-${idx}`} className="mb-8 text-[1.18rem] leading-9 text-slate-800 sm:text-[1.28rem]">
+          <span className="float-left mr-3 mt-1 font-serif text-6xl font-bold leading-none text-emerald-800 sm:text-7xl">
+            {paragraph.charAt(0)}
+          </span>
+          <span className="font-medium text-slate-900">{paragraph.slice(1)}</span>
+        </p>
+      ) : (
+        <p key={`p-${idx}`} className="mb-7 text-lg leading-8 text-slate-700 sm:text-[1.06rem]">
+          {paragraph}
+        </p>
+      )
     );
+
+    if (idx === 1) {
+      contentBlocks.push(
+        <blockquote
+          key="pull-quote"
+          className="my-10 border-y border-emerald-200 bg-[linear-gradient(135deg,rgba(240,253,244,0.95),rgba(236,254,255,0.9))] px-6 py-6 text-2xl font-black leading-tight text-slate-900 shadow-[0_20px_40px_-35px_rgba(16,185,129,0.8)] sm:px-8 sm:text-[2rem]"
+          style={{ fontVariationSettings: "'wght' 820" }}
+        >
+          “{pullQuote}”
+        </blockquote>
+      );
+    }
 
     const shouldPlaceImage = inlineCursor < inlineImages.length && (idx === 0 || (idx + 1) % 2 === 0);
     if (shouldPlaceImage) {
       const imagePath = inlineImages[inlineCursor];
+      const editorialFigureClass =
+        inlineCursor % 2 === 0
+          ? 'lg:mr-12 lg:w-[88%]'
+          : 'lg:ml-12 lg:w-[88%]';
+
       contentBlocks.push(
-        <figure key={`img-${idx}-${inlineCursor}`} className="my-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_-30px_rgba(0,0,0,0.6)]">
-          <img src={imagePath} alt={`${post.title} image ${inlineCursor + 1}`} className="h-auto w-full object-cover" />
+        <figure
+          key={`img-${idx}-${inlineCursor}`}
+          className={`my-10 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)] ${editorialFigureClass}`}
+        >
+          <img
+            src={imagePath}
+            alt={`${post.title} image ${inlineCursor + 1}`}
+            className="mx-auto block max-h-[70vh] w-auto max-w-full rounded-[1.2rem] object-contain"
+          />
         </figure>
       );
       inlineCursor += 1;
@@ -105,8 +146,8 @@ export default async function BlogPostPage({
   while (inlineCursor < inlineImages.length) {
     const imagePath = inlineImages[inlineCursor];
     contentBlocks.push(
-      <figure key={`img-tail-${inlineCursor}`} className="my-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_45px_-30px_rgba(0,0,0,0.6)]">
-        <img src={imagePath} alt={`${post.title} image ${inlineCursor + 1}`} className="h-auto w-full object-cover" />
+      <figure key={`img-tail-${inlineCursor}`} className="my-10 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white/90 p-3 shadow-[0_25px_60px_-35px_rgba(0,0,0,0.55)] lg:w-[88%]">
+        <img src={imagePath} alt={`${post.title} image ${inlineCursor + 1}`} className="mx-auto block max-h-[70vh] w-auto max-w-full rounded-[1.2rem] object-contain" />
       </figure>
     );
     inlineCursor += 1;
@@ -124,6 +165,7 @@ export default async function BlogPostPage({
             {post.category.replace('-', ' ')}
           </span>
           <h1 className="text-4xl lg:text-6xl font-black mb-4">{post.title}</h1>
+          <p className="max-w-3xl text-lg leading-8 text-white/92 sm:text-[1.18rem]">{dek}</p>
           <div className="flex flex-wrap items-center gap-4 text-white/95">
             <span>By {post.author}</span>
             <span>•</span>
@@ -140,8 +182,8 @@ export default async function BlogPostPage({
       {/* Hero Image */}
       {imageSrc && (
         <div className="mx-auto mt-8 max-w-6xl px-4 sm:px-6">
-          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-[0_30px_70px_-35px_rgba(0,0,0,0.7)]">
-            <img src={imageSrc} alt={post.title} className="h-[260px] w-full object-contain object-center sm:h-[380px] lg:h-[460px]" />
+          <div className="relative overflow-hidden rounded-[2rem] border border-slate-200 bg-[linear-gradient(145deg,#f8fafc,#e2f5ef)] p-4 shadow-[0_30px_70px_-35px_rgba(0,0,0,0.7)] sm:p-5">
+            <img src={imageSrc} alt={post.title} className="mx-auto block max-h-[78vh] w-auto max-w-full rounded-[1.5rem] object-contain" />
             {post.imageType === 'ai' && (
               <div className="absolute right-4 top-4 rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur-sm sm:text-sm">
                 AI Generated
@@ -184,14 +226,47 @@ export default async function BlogPostPage({
             </div>
 
             <article className={`rounded-3xl border p-6 shadow-[0_20px_60px_-38px_rgba(0,0,0,0.4)] sm:p-10 ${textStyleClasses[textStyle]}`}>
+              <div className="mb-10 grid gap-4 border-b border-slate-200/80 pb-8 text-sm text-slate-600 sm:grid-cols-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Story Angle</p>
+                  <p className="mt-2 text-sm leading-6">A documented impact story shaped like a feature article instead of a basic blog card.</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Read Time</p>
+                  <p className="mt-2 text-sm leading-6">About {estimatedReadMinutes} min read</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Visual Rhythm</p>
+                  <p className="mt-2 text-sm leading-6">Hero image first, then editorial inline frames with more breathing room.</p>
+                </div>
+              </div>
+
               {contentBlocks}
             </article>
           </div>
 
-          <aside className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Story At A Glance</h3>
+              <div className="mt-4 space-y-3 text-sm text-slate-700">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Format</p>
+                  <p className="mt-1">Editorial post with layered visuals</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Default Canvas</p>
+                  <p className="mt-1">Gradient article background</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Images</p>
+                  <p className="mt-1">Contain-first display to avoid unexpected cropping</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <h3 className="text-sm font-black uppercase tracking-[0.14em] text-slate-500">Related Stories</h3>
-              <p className="mt-2 text-sm text-slate-600">Quick side tiles so readers can jump to other posts.</p>
+              <p className="mt-2 text-sm text-slate-600">The side tiles stay visible and act more like an editorial rail than a basic list.</p>
             </div>
 
             {relatedPosts.length > 0 ? (
