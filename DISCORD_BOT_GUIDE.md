@@ -11,15 +11,17 @@ This bot is the content pipeline for gallery uploads, blog publishing, and campa
 ## Core Commands
 
 1. `!help`
-2. `!list`
-3. `!delete [number]`
-4. `!delete all`
-5. `!addcategory [name]`
-6. `!blog [topic]`
-7. `!blog-images [SESSION_ID]` (attach images in same message)
-8. `!blogs`
-9. `!edit [number]`
-10. `!delete-blog [number]`
+2. `!all`
+3. `!commands`
+4. `!list`
+5. `!delete [number]`
+6. `!delete all`
+7. `!addcategory [name]`
+8. `!blog [topic]`
+9. `!blog-images [SESSION_ID]` (attach images in same message)
+10. `!blogs`
+11. `!edit [number]`
+12. `!delete-blog [number]`
 
 ## Campaign Commands
 
@@ -45,6 +47,42 @@ Notes:
 
 1. Discord dropdown menus support up to 25 options.
 2. New categories are stored in `public/media-metadata/_categories.json`.
+
+## How to Update Gallery
+
+Gallery updates are image-driven (not a text command).
+
+1. Upload image directly in configured bot channel
+2. In Step 1 destination dropdown, choose `Gallery`
+3. In Step 2 choose a category (default or custom category)
+4. Edit caption in Step 3
+5. Select social sharing options or skip
+6. Confirm publish
+
+Useful commands for gallery maintenance:
+
+1. `!list` - show uploaded items
+2. `!delete [number]` - remove one item from list
+3. `!delete all` - clear uploaded items
+4. `!addcategory [name]` - add category option for future gallery uploads
+
+Note: Campaign is no longer an image-upload destination in this flow. Campaigns should be managed with `!campaign-new` and campaign commands.
+
+## How to Update Team
+
+Team updates are also image-driven.
+
+1. Upload image directly in configured bot channel
+2. In Step 1 destination dropdown, choose `Team`
+3. In Step 2 choose team category (Leadership, Volunteers, Staff, Board Members)
+4. Team member modal opens automatically
+5. Fill:
+   - Name
+   - Role/Title
+   - Bio (optional)
+6. Confirm `Add to Team Page`
+
+After publish, metadata includes name/role/bio and destination=`team`.
 
 ## Blog Workflow (Current)
 
