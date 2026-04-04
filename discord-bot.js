@@ -546,18 +546,31 @@ async function saveCampaign(campaignData, existingFile = null) {
   const slug = toSlug(campaignData.title || `campaign-${id}`);
   const filename = existingFile || `${id}-${slug}.json`;
 
-  const targetMetric = parseMetricInput(campaignData.targetAmount, campaignData.metricUnit || 'items');
-  const raisedMetric = parseMetricInput(campaignData.raisedAmount, targetMetric.metricType === 'currency' ? 'USD' : targetMetric.metricUnit);
+  let targetValue, raisedValue, metricType, metricUnit;
+  if (campaignData.metricType) {
+    // Explicit unit chosen via dropdown — trust it directly
+    metricType = campaignData.metricType;
+    metricUnit = campaignData.metricUnit || (metricType === 'currency' ? 'USD' : 'items');
+    targetValue = toNumberAmount(campaignData.targetAmount);
+    raisedValue = toNumberAmount(campaignData.raisedAmount);
+  } else {
+    const targetMetric = parseMetricInput(campaignData.targetAmount, campaignData.metricUnit || 'items');
+    const raisedMetric = parseMetricInput(campaignData.raisedAmount, targetMetric.metricType === 'currency' ? 'USD' : targetMetric.metricUnit);
+    metricType = targetMetric.metricType;
+    metricUnit = targetMetric.metricType === 'currency' ? 'USD' : (targetMetric.metricUnit || 'items');
+    targetValue = targetMetric.value;
+    raisedValue = raisedMetric.value;
+  }
 
   const payload = {
     id,
     slug,
     title: campaignData.title,
     description: campaignData.description,
-    targetAmount: targetMetric.value,
-    raisedAmount: raisedMetric.value,
-    metricType: targetMetric.metricType,
-    metricUnit: targetMetric.metricType === 'currency' ? 'USD' : (targetMetric.metricUnit || 'items'),
+    targetAmount: targetValue,
+    raisedAmount: raisedValue,
+    metricType,
+    metricUnit,
     beneficiaries: campaignData.beneficiaries || '',
     status: campaignData.status === 'archived' ? 'archived' : 'active',
     createdAt: campaignData.createdAt || now,
@@ -1536,6 +1549,91 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// CAMPAIGN UNIT SELECT HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+const CAMPAIGN_UNIT_OPTIONS = [
+  { label: '💵 Dollar Amount', description: 'Track donations in USD', value: 'currency:USD' },
+  { label: '👟 Pairs of Shoes', description: 'Count pairs collected', value: 'count:pairs' },
+  { label: '🥫 Cans of Food', description: 'Count food cans collected', value: 'count:cans' },
+  { label: '👕 Clothing Items', description: 'Count clothing pieces', value: 'count:clothing items' },
+  { label: '🎒 Kits / Packages', description: 'Count kits or packages', value: 'count:kits' },
+  { label: '📦 General Items', description: 'Count generic items', value: 'count:items' },
+  { label: '✏️ Custom Unit...', description: 'Type your own unit name', value: 'custom' },
+];
+
+function buildUnitSelectRow(sessionId, prefix, currentUnit = null) {
+  const placeholder = currentUnit
+    ? `Choose metric type (current: ${currentUnit})…`
+    : 'Choose metric type for this campaign…';
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`${prefix}_unit_${sessionId}`)
+      .setPlaceholder(placeholder)
+      .addOptions(CAMPAIGN_UNIT_OPTIONS)
+  );
+}
+
+async function showCampaignCreatePreview(interaction, session, sessionId) {
+  const draft = session.draft;
+  const target = toNumberAmount(draft.targetAmount);
+  const raised = toNumberAmount(draft.raisedAmount);
+  const percentage = target > 0 ? Math.round((raised / target) * 100) : 0;
+  const metricType = draft.metricType || 'currency';
+  const metricUnit = draft.metricUnit || (metricType === 'currency' ? 'USD' : 'items');
+  const unitLabel = metricType === 'currency' ? '💵 Dollar Amount' : `📦 ${metricUnit}`;
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`campaign_create_save_${sessionId}`).setLabel('✅ Publish Campaign').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`campaign_create_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+  );
+
+  const embed = new EmbedBuilder()
+    .setColor(0x7CB342)
+    .setTitle('Preview: New Campaign')
+    .addFields(
+      { name: 'Title', value: draft.title, inline: false },
+      { name: 'Description', value: draft.description, inline: false },
+      { name: 'Unit Type', value: unitLabel, inline: true },
+      { name: 'Progress', value: `${formatCampaignMetric(raised, metricType, metricUnit)} of ${formatCampaignMetric(target, metricType, metricUnit)} (${percentage}%)`, inline: true },
+      { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true }
+    )
+    .setFooter({ text: 'Approve to publish to website' });
+
+  return await safeReply(interaction, { embeds: [embed], components: [row] });
+}
+
+async function showCampaignEditPreview(interaction, session, sessionId) {
+  const draft = session.draft;
+  const target = toNumberAmount(draft.targetAmount);
+  const raised = toNumberAmount(draft.raisedAmount);
+  const percentage = target > 0 ? Math.round((raised / target) * 100) : 0;
+  const metricType = draft.metricType || 'currency';
+  const metricUnit = draft.metricUnit || (metricType === 'currency' ? 'USD' : 'items');
+  const unitLabel = metricType === 'currency' ? '💵 Dollar Amount' : `📦 ${metricUnit}`;
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`campaign_edit_save_active_${sessionId}`).setLabel('✅ Save as Active').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`campaign_edit_save_archived_${sessionId}`).setLabel('📦 Save as Archived').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`campaign_edit_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+  );
+
+  const embed = new EmbedBuilder()
+    .setColor(0x7CB342)
+    .setTitle('Preview: Campaign Update')
+    .addFields(
+      { name: 'Title', value: draft.title, inline: false },
+      { name: 'Description', value: draft.description, inline: false },
+      { name: 'Unit Type', value: unitLabel, inline: true },
+      { name: 'Progress', value: `${formatCampaignMetric(raised, metricType, metricUnit)} of ${formatCampaignMetric(target, metricType, metricUnit)} (${percentage}%)`, inline: true },
+      { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true },
+      { name: 'Current Status', value: (session.campaign.status || 'active') === 'archived' ? 'Archived' : 'Active', inline: true }
+    );
+
+  return await safeReply(interaction, { embeds: [embed], components: [row] });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // INTERACTION HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -2071,7 +2169,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const session = campaignSessions.get(sessionId);
       if (!session) return await safeReply(interaction, '❌ Session expired.');
 
-      const draft = {
+      session.draft = {
         title: interaction.fields.getTextInputValue('campaign_title').trim(),
         description: interaction.fields.getTextInputValue('campaign_description').trim(),
         targetAmount: interaction.fields.getTextInputValue('campaign_target').trim(),
@@ -2080,31 +2178,53 @@ client.on(Events.InteractionCreate, async (interaction) => {
         status: 'active',
       };
 
-      session.draft = draft;
+      const unitRow = buildUnitSelectRow(sessionId, 'campaign_create');
+      return await safeReply(interaction, {
+        content: '**Step 2/2** — What unit should this campaign track?',
+        components: [unitRow],
+      });
+    }
 
-      const parsedTarget = parseMetricInput(draft.targetAmount);
-      const parsedRaised = parseMetricInput(draft.raisedAmount, parsedTarget.metricType === 'currency' ? 'USD' : parsedTarget.metricUnit);
-      const target = parsedTarget.value;
-      const raised = parsedRaised.value;
-      const percentage = target > 0 ? Math.round((raised / target) * 100) : 0;
+    // campaign create — unit selected
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('campaign_create_unit_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.draft) return await safeReply(interaction, '❌ Session expired.');
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`campaign_create_save_${sessionId}`).setLabel('✅ Publish Campaign').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`campaign_create_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
-      );
+      const selected = interaction.values[0];
+      if (selected === 'custom') {
+        const modal = new ModalBuilder()
+          .setCustomId(`campaign_create_custom_modal_${sessionId}`)
+          .setTitle('Custom Metric Unit')
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('custom_unit')
+                .setLabel('What unit are you collecting?')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('e.g. backpacks, books, hygiene kits')
+                .setRequired(true)
+                .setMaxLength(30)
+            )
+          );
+        return await interaction.showModal(modal);
+      }
 
-      const embed = new EmbedBuilder()
-        .setColor(0x7CB342)
-        .setTitle('Preview: New Campaign')
-        .addFields(
-          { name: 'Title', value: draft.title, inline: false },
-          { name: 'Description', value: draft.description, inline: false },
-          { name: 'Progress', value: `${formatCampaignMetric(raised, parsedTarget.metricType, parsedTarget.metricUnit)} of ${formatCampaignMetric(target, parsedTarget.metricType, parsedTarget.metricUnit)} (${percentage}%)`, inline: true },
-          { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true }
-        )
-        .setFooter({ text: 'Approve to publish to website' });
+      const [rawType, rawUnit] = selected.split(':');
+      session.draft.metricType = rawType;
+      session.draft.metricUnit = rawUnit;
+      return await showCampaignCreatePreview(interaction, session, sessionId);
+    }
 
-      return await safeReply(interaction, { embeds: [embed], components: [row] });
+    // campaign create — custom unit modal
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('campaign_create_custom_modal_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[4], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.draft) return await safeReply(interaction, '❌ Session expired.');
+
+      session.draft.metricType = 'count';
+      session.draft.metricUnit = interaction.fields.getTextInputValue('custom_unit').trim();
+      return await showCampaignCreatePreview(interaction, session, sessionId);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('campaign_create_save_')) {
@@ -2176,7 +2296,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const session = campaignSessions.get(sessionId);
       if (!session || !session.campaign) return await safeReply(interaction, '❌ Session expired.');
 
-      const draft = {
+      session.draft = {
         ...session.campaign,
         title: interaction.fields.getTextInputValue('campaign_title').trim(),
         description: interaction.fields.getTextInputValue('campaign_description').trim(),
@@ -2184,32 +2304,61 @@ client.on(Events.InteractionCreate, async (interaction) => {
         raisedAmount: interaction.fields.getTextInputValue('campaign_raised').trim(),
         beneficiaries: (interaction.fields.getTextInputValue('campaign_beneficiaries') || '').trim(),
         status: session.campaign.status || 'active',
+        // carry over existing unit; user can change via select
+        metricType: session.campaign.metricType,
+        metricUnit: session.campaign.metricUnit,
       };
 
-      session.draft = draft;
+      const currentLabel = session.campaign.metricType === 'count'
+        ? session.campaign.metricUnit || 'items'
+        : 'dollar amount';
+      const unitRow = buildUnitSelectRow(sessionId, 'campaign_edit', currentLabel);
+      return await safeReply(interaction, {
+        content: '**Step 2/2** — Confirm or change the metric unit:',
+        components: [unitRow],
+      });
+    }
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`campaign_edit_save_active_${sessionId}`).setLabel('✅ Save as Active').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`campaign_edit_save_archived_${sessionId}`).setLabel('📦 Save as Archived').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`campaign_edit_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
-      );
+    // campaign edit — unit selected
+    if (interaction.isStringSelectMenu() && interaction.customId.startsWith('campaign_edit_unit_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.draft) return await safeReply(interaction, '❌ Session expired.');
 
-      const embed = new EmbedBuilder()
-        .setColor(0x7CB342)
-        .setTitle('Preview: Campaign Update')
-        .addFields(
-          { name: 'Title', value: draft.title, inline: false },
-          { name: 'Description', value: draft.description, inline: false },
-          {
-            name: 'Progress',
-            value: `${formatCampaignMetric(toNumberAmount(draft.raisedAmount), parseMetricInput(draft.targetAmount).metricType, parseMetricInput(draft.targetAmount).metricUnit)} of ${formatCampaignMetric(toNumberAmount(draft.targetAmount), parseMetricInput(draft.targetAmount).metricType, parseMetricInput(draft.targetAmount).metricUnit)}`,
-            inline: true
-          },
-          { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true },
-          { name: 'Current Status', value: (session.campaign.status || 'active') === 'archived' ? 'Archived' : 'Active', inline: true }
-        );
+      const selected = interaction.values[0];
+      if (selected === 'custom') {
+        const modal = new ModalBuilder()
+          .setCustomId(`campaign_edit_custom_modal_${sessionId}`)
+          .setTitle('Custom Metric Unit')
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId('custom_unit')
+                .setLabel('What unit are you collecting?')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('e.g. backpacks, books, hygiene kits')
+                .setRequired(true)
+                .setMaxLength(30)
+            )
+          );
+        return await interaction.showModal(modal);
+      }
 
-      return await safeReply(interaction, { embeds: [embed], components: [row] });
+      const [rawType, rawUnit] = selected.split(':');
+      session.draft.metricType = rawType;
+      session.draft.metricUnit = rawUnit;
+      return await showCampaignEditPreview(interaction, session, sessionId);
+    }
+
+    // campaign edit — custom unit modal
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('campaign_edit_custom_modal_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[4], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.draft) return await safeReply(interaction, '❌ Session expired.');
+
+      session.draft.metricType = 'count';
+      session.draft.metricUnit = interaction.fields.getTextInputValue('custom_unit').trim();
+      return await showCampaignEditPreview(interaction, session, sessionId);
     }
 
     if (interaction.isButton() && interaction.customId.startsWith('campaign_edit_save_')) {

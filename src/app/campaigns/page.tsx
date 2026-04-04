@@ -164,7 +164,7 @@ export default async function CampaignsPage() {
                     </div>
 
                     <a
-                      href="/donate"
+                      href={`/campaigns/${campaign.slug}/pay`}
                       className="w-full block text-center bg-[#2BA5D7] text-white py-2 rounded-lg font-bold text-sm hover:bg-[#1E5A96] transition"
                     >
                       Support This Campaign
