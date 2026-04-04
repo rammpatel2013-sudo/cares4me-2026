@@ -13,16 +13,39 @@ export type DonateContent = typeof import('../../content/pages/donate.json');
 export type VolunteerContent = typeof import('../../content/pages/volunteer.json');
 export type ContactUsContent = typeof import('../../content/pages/contact-us.json');
 
+function getContentDirectoryCandidates() {
+  const candidates = [
+    process.env.APP_DIR ? path.join(process.env.APP_DIR, 'content', 'pages') : '',
+    path.join(process.cwd(), 'content', 'pages'),
+  ].filter(Boolean);
+
+  return [...new Set(candidates)];
+}
+
+async function resolveContentFilePath(filename: string) {
+  const candidates = getContentDirectoryCandidates();
+
+  for (const dir of candidates) {
+    const candidatePath = path.join(dir, filename);
+    try {
+      await fs.access(candidatePath);
+      return candidatePath;
+    } catch {}
+  }
+
+  return path.join(candidates[0], filename);
+}
+
 async function readContentFile<T>(filename: string): Promise<T> {
   if (noStore) noStore();
-  const contentDir = path.join(process.cwd(), 'content', 'pages');
-  const filePath = path.join(contentDir, filename);
+  const filePath = await resolveContentFilePath(filename);
   const raw = await fs.readFile(filePath, 'utf8');
   return JSON.parse(raw) as T;
 }
 
 export function getSingletonContentPath(pageKey: string) {
-  return path.join(process.cwd(), 'content', 'pages', `${pageKey}.json`);
+  const candidates = getContentDirectoryCandidates();
+  return path.join(candidates[0], `${pageKey}.json`);
 }
 
 export async function loadHomeContent() {
