@@ -163,6 +163,7 @@ const SINGLETON_PAGE_CONFIG = {
       'hero-media': 'Hero Media',
       stats: 'Quick Stats',
       featured: 'Featured Campaign',
+      'featured-progress': 'Featured Progress',
     },
   },
   'about-us': {
@@ -250,6 +251,8 @@ function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
       return serializeArrayLines(content.quickStats, (item) => `${item.value} | ${item.label} | ${item.color}`);
     case 'home:featured':
       return `Slug: ${content.featuredCampaign.slug || '(none)'}\nEyebrow: ${content.featuredCampaign.eyebrow}\nTitle: ${content.featuredCampaign.fallbackTitle || ''}\nDescription: ${content.featuredCampaign.fallbackDescription || ''}\nImage: ${content.featuredCampaign.imageSrc || 'none'}`;
+    case 'home:featured-progress':
+      return `Raised: ${content.featuredCampaign.fallbackRaised}\nTarget: ${content.featuredCampaign.fallbackTarget}\nMetric Type: ${content.featuredCampaign.fallbackMetricType}\nMetric Unit: ${content.featuredCampaign.fallbackMetricUnit}`;
     case 'about-us:hero':
       return `Badge: ${content.hero.badge}\nTitle: ${content.hero.title}`;
     case 'about-us:impacts':
@@ -329,6 +332,22 @@ function buildPageSectionModal(sessionId, session) {
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('ctaLabel').setLabel('CTA label').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.ctaLabel || '').setRequired(true).setMaxLength(60)
+        )
+      );
+      break;
+    case 'home:featured-progress':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('fallbackRaised').setLabel('Fallback raised amount/value').setStyle(TextInputStyle.Short).setValue(String(content.featuredCampaign.fallbackRaised ?? '')).setRequired(true).setMaxLength(20)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('fallbackTarget').setLabel('Fallback target amount/value').setStyle(TextInputStyle.Short).setValue(String(content.featuredCampaign.fallbackTarget ?? '')).setRequired(true).setMaxLength(20)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('fallbackMetricType').setLabel('Metric type: currency or count').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.fallbackMetricType || 'currency').setRequired(true).setMaxLength(20)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('fallbackMetricUnit').setLabel('Metric unit: USD or items').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.fallbackMetricUnit || 'USD').setRequired(true).setMaxLength(40)
         )
       );
       break;
@@ -444,6 +463,15 @@ function parsePageSectionDraft(session, fields) {
         fallbackDescription: fields.getTextInputValue('fallbackDescription').trim(),
         ctaLabel: fields.getTextInputValue('ctaLabel').trim(),
       };
+    case 'home:featured-progress': {
+      const metricTypeRaw = fields.getTextInputValue('fallbackMetricType').trim().toLowerCase();
+      return {
+        fallbackRaised: Number(fields.getTextInputValue('fallbackRaised').trim()) || 0,
+        fallbackTarget: Number(fields.getTextInputValue('fallbackTarget').trim()) || 0,
+        fallbackMetricType: metricTypeRaw === 'count' ? 'count' : 'currency',
+        fallbackMetricUnit: fields.getTextInputValue('fallbackMetricUnit').trim() || 'USD',
+      };
+    }
     case 'about-us:hero':
       return {
         badge: fields.getTextInputValue('badge').trim(),
@@ -495,6 +523,9 @@ function applyPageSectionDraft(content, session, draft) {
       content.quickStats = draft;
       break;
     case 'home:featured':
+      content.featuredCampaign = { ...content.featuredCampaign, ...draft };
+      break;
+    case 'home:featured-progress':
       content.featuredCampaign = { ...content.featuredCampaign, ...draft };
       break;
     case 'about-us:hero':
