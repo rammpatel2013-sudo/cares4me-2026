@@ -586,6 +586,31 @@ async function saveBlogAttachments(attachments, maxImages = MAX_BLOG_IMAGES) {
   return savedFilenames;
 }
 
+async function saveSingletonSectionImage(attachment, opts = {}) {
+  const sectionPrefix = opts.sectionPrefix || 'singleton';
+  await mkdir(PUBLIC_MEDIA_DIR, { recursive: true });
+
+  const response = await fetch(attachment.url);
+  if (!response.ok) {
+    throw new Error(`Download failed: ${response.status}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const timestamp = Date.now();
+  const originalBase = (attachment.name || 'image')
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-zA-Z0-9-_]/g, '-')
+    .slice(0, 60);
+  const finalName = `${sectionPrefix}-${timestamp}-${originalBase || 'image'}.webp`;
+
+  await sharp(buffer)
+    .resize(1600, 900, { fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 88 })
+    .toFile(path.join(PUBLIC_MEDIA_DIR, finalName));
+
+  return `/uploads/${finalName}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // AI IMAGE GENERATION
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -1106,7 +1131,8 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '!campaign-impact', value: 'Update impact numbers manually', inline: true },
         { name: '🧩 SINGLETON PAGES', value: '─────────────────────────────', inline: false },
         { name: '!pages', value: 'List editable singleton pages + sections', inline: true },
-        { name: '!page-edit [page] [section]', value: 'Edit singleton page content', inline: true }
+        { name: '!page-edit [page] [section]', value: 'Edit singleton page content', inline: true },
+        { name: '!page-image home featured', value: 'Attach image for home featured campaign block', inline: true }
       )
       .setFooter({ text: 'Made for Care4ME' });
     await message.reply({ embeds: [embed] });
@@ -1263,6 +1289,47 @@ client.on(Events.MessageCreate, async (message) => {
       .setFooter({ text: 'Use !page-edit [page] [section]  e.g. !page-edit home stats' });
 
     await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !page-image home featured (attach image in same message)
+  if (command === 'page-image') {
+    const pageKey = (args[1] || '').toLowerCase();
+    const sectionKey = (args[2] || '').toLowerCase();
+
+    if (pageKey !== 'home' || sectionKey !== 'featured') {
+      await message.reply('❓ Usage: `!page-image home featured` and attach one image in the same message.');
+      return;
+    }
+
+    const image = [...message.attachments.values()].find((att) => att.contentType?.startsWith('image'));
+    if (!image) {
+      await message.reply('❌ Attach an image in the same message. Example: `!page-image home featured` + image file.');
+      return;
+    }
+
+    try {
+      const imagePath = await saveSingletonSectionImage(image, { sectionPrefix: 'home-featured' });
+      const content = await readSingletonPageContent('home');
+      content.featuredCampaign = {
+        ...content.featuredCampaign,
+        imageSrc: imagePath,
+        imageAlt: content.featuredCampaign.imageAlt || content.featuredCampaign.fallbackTitle || 'Featured campaign image',
+      };
+      await writeSingletonPageContent('home', content);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle('✅ Home Featured Image Updated')
+        .setDescription(`Saved image to: ${imagePath}`)
+        .setImage(image.url)
+        .setFooter({ text: 'Homepage featured campaign block now uses this image path' });
+
+      await message.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error('Page image upload error:', error);
+      await message.reply(`❌ Failed to upload featured image: ${error.message}`);
+    }
     return;
   }
 
