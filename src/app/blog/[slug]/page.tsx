@@ -37,8 +37,16 @@ async function resolveImageAsset(imageName?: string): Promise<ImageAsset | null>
     return null;
   }
 
+  if (imageName.startsWith('http://') || imageName.startsWith('https://') || imageName.startsWith('/')) {
+    return {
+      src: imageName,
+      orientation: 'landscape',
+    };
+  }
+
   const publicDir = path.join(process.cwd(), 'public');
   const candidateDirs = ['blog-images', 'uploads', 'images', 'cares4memedia', ''];
+  const encodedImageName = encodeURIComponent(path.basename(imageName));
 
   for (const dir of candidateDirs) {
     const absolutePath = path.join(publicDir, dir, imageName);
@@ -65,7 +73,7 @@ async function resolveImageAsset(imageName?: string): Promise<ImageAsset | null>
 
       const relativePath = path.relative(publicDir, absolutePath).split(path.sep).join('/');
       return {
-        src: `/${relativePath}`,
+        src: `/api/image?file=${encodeURIComponent(path.basename(relativePath))}`,
         width,
         height,
         orientation,
@@ -74,7 +82,7 @@ async function resolveImageAsset(imageName?: string): Promise<ImageAsset | null>
   }
 
   return {
-    src: `/blog-images/${imageName}`,
+    src: `/api/image?file=${encodedImageName}`,
     orientation: 'landscape',
   };
 }
