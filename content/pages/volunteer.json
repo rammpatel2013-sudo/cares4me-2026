@@ -1,0 +1,40 @@
+{
+  "hero": {
+    "title": "Join Our Movement",
+    "description": "Volunteer with Care4ME and transform lives directly. Your time and expertise matter."
+  },
+  "form": {
+    "heading": "Apply to Volunteer",
+    "successMessage": "Thank you! Your application has been received. We'll contact you soon!",
+    "roles": [
+      "Health Educator",
+      "Mentor",
+      "Curriculum Developer",
+      "Program Coordinator"
+    ],
+    "submitLabel": "Submit Application"
+  },
+  "testimonials": {
+    "title": "From Our Volunteers",
+    "items": [
+      {
+        "name": "Sarah Johnson",
+        "role": "Health Educator",
+        "quote": "I've helped 50+ seniors learn about managing chronic diseases. Seeing their confidence grow is the best reward.",
+        "years": "2 years"
+      },
+      {
+        "name": "Michael Chen",
+        "role": "Mentor",
+        "quote": "Working with young students on health literacy has changed my perspective on what education truly means.",
+        "years": "1.5 years"
+      },
+      {
+        "name": "Priya Desai",
+        "role": "Curriculum Developer",
+        "quote": "Creating health materials that resonate with real communities is fulfilling beyond measure.",
+        "years": "1 year"
+      }
+    ]
+  }
+}

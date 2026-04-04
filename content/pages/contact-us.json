@@ -1,0 +1,23 @@
+{
+  "hero": {
+    "title": "Contact Us",
+    "description": "Get in touch with our team. We'd love to hear from you."
+  },
+  "contactCards": [
+    { "icon": "📧", "title": "Email", "value": "care4medicalequipment@gmail.com", "href": "mailto:care4medicalequipment@gmail.com" },
+    { "icon": "📞", "title": "Phone", "value": "(609) 367-4603", "href": "tel:6093674603" },
+    { "icon": "📍", "title": "Location", "value": "New Jersey, USA", "href": "" }
+  ],
+  "form": {
+    "heading": "Send us a Message",
+    "successMessage": "✅ Message sent successfully! We'll get back to you soon.",
+    "subjects": [
+      { "value": "general", "label": "General Inquiry" },
+      { "value": "donation", "label": "Donation Question" },
+      { "value": "volunteer", "label": "Volunteer Opportunity" },
+      { "value": "partnership", "label": "Partnership Inquiry" },
+      { "value": "feedback", "label": "Feedback" }
+    ],
+    "buttonLabel": "Send Message"
+  }
+}

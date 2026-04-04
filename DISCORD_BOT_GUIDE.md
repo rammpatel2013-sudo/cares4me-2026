@@ -1,6 +1,6 @@
 # Care4ME Discord Bot Guide
 
-This bot is the content pipeline for gallery uploads, blog publishing, and campaign management.
+This bot is the content pipeline for gallery uploads, blog publishing, campaign management, and singleton website page editing.
 
 ## Start and Stop Bot
 
@@ -22,6 +22,8 @@ This bot is the content pipeline for gallery uploads, blog publishing, and campa
 10. `!blogs`
 11. `!edit [number]`
 12. `!delete-blog [number]`
+13. `!pages`
+14. `!page-edit [page] [section]`
 
 ## Campaign Commands
 
@@ -34,6 +36,52 @@ This bot is the content pipeline for gallery uploads, blog publishing, and campa
 7. `!campaign-impact` - manually update impact counters
 
 Recommended command for creating new campaigns: `!campaign-new`.
+
+## Singleton Page Commands
+
+Use these commands to update site pages that are not collections like blog, gallery, or campaigns.
+
+1. `!pages` - list editable pages and sections
+2. `!page-edit [page] [section]` - open edit flow for a specific singleton section
+
+Current pages:
+
+1. `home`
+2. `about-us`
+3. `donate`
+4. `volunteer`
+5. `contact-us`
+
+Current editable sections:
+
+1. `home hero`
+2. `home hero-media`
+3. `home stats`
+4. `home featured`
+5. `about-us hero`
+6. `about-us impacts`
+7. `about-us story`
+8. `donate hero`
+9. `donate tiers`
+10. `volunteer hero`
+11. `volunteer form`
+12. `contact-us hero`
+13. `contact-us cards`
+
+Example:
+
+`!page-edit home hero`
+
+Flow:
+
+1. Run the command
+2. Review current section summary
+3. Click `Open Editor`
+4. Update fields in the modal
+5. Review preview
+6. Save or cancel
+
+These edits update the JSON content files used by the website pages.
 
 ## Gallery Category Management
 
@@ -150,6 +198,13 @@ Archived campaigns are hidden from `/campaigns` and blocked from payment form.
 3. Payment page supports preset amounts + custom amount
 4. PayPal/Venmo buttons appear only after valid amount selection
 
+## Website Behavior for Singleton Pages
+
+1. Home, About Us, Donate, Volunteer, and Contact Us now load their main content from JSON files
+2. Featured campaign on the home page can optionally connect to an active campaign by slug
+3. If no linked active campaign exists, the home page uses the fallback featured campaign values stored in its page JSON
+4. Runtime form behavior remains in code, but page copy and configurable options are now file-driven
+
 ## Storage Locations
 
 1. Blog posts: `public/blog-posts`
@@ -158,6 +213,7 @@ Archived campaigns are hidden from `/campaigns` and blocked from payment form.
 4. Campaign impact: `public/campaigns/_impact.json`
 5. Gallery uploads: `public/uploads`
 6. Gallery metadata: `public/media-metadata`
+7. Singleton page content: `content/pages`
 
 ## Troubleshooting
 
@@ -184,6 +240,18 @@ Archived campaigns are hidden from `/campaigns` and blocked from payment form.
 1. Confirm campaign exists in `public/campaigns` (non-archived)
 2. Confirm URL slug matches campaign `slug` in JSON
 3. Refresh campaign page and reopen support button
+
+### Page edit command says page or section is invalid
+
+1. Run `!pages` to confirm supported page keys and section keys
+2. Use exact names like `about-us` or `hero-media`
+3. Restart bot if commands were added recently and the old process is still running
+
+### Singleton page changes do not appear on site
+
+1. Confirm the edit was saved successfully in Discord
+2. Check the matching file in `content/pages`
+3. Refresh the browser once to pick up the latest dynamic page render
 
 ### PayPal/Venmo buttons not visible
 

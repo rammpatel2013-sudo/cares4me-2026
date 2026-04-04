@@ -35,6 +35,7 @@ const BLOG_DIR = path.join(BASE_DIR, 'public', 'blog-posts');
 const BLOG_IMAGES_DIR = path.join(BASE_DIR, 'public', 'blog-images');
 const CAMPAIGNS_DIR = path.join(BASE_DIR, 'public', 'campaigns');
 const CAMPAIGNS_IMPACT_FILE = path.join(CAMPAIGNS_DIR, '_impact.json');
+const SINGLETON_CONTENT_DIR = path.join(BASE_DIR, 'content', 'pages');
 const DEFAULT_BLOG_AUTHOR = process.env.DEFAULT_BLOG_AUTHOR || 'Darsh Gajera';
 const MAX_BLOG_IMAGES = 6;
 
@@ -74,6 +75,7 @@ const client = new Client({
 const uploadSessions = new Map();
 const blogSessions = new Map();
 const campaignSessions = new Map();
+const pageSessions = new Map();
 
 function getFallbackLogoPath() {
   for (const logoPath of BLOG_LOGO_CANDIDATES) {
@@ -142,6 +144,396 @@ function scheduleSessionCleanup(timestamp) {
       console.log(`🧹 Session ${timestamp} cleaned up`);
     }
   }, SESSION_TIMEOUT_MS);
+}
+
+function schedulePageSessionCleanup(sessionId) {
+  setTimeout(() => {
+    if (pageSessions.has(sessionId)) {
+      pageSessions.delete(sessionId);
+      console.log(`🧹 Page session ${sessionId} cleaned up`);
+    }
+  }, SESSION_TIMEOUT_MS);
+}
+
+const SINGLETON_PAGE_CONFIG = {
+  home: {
+    title: 'Home',
+    sections: {
+      hero: 'Hero Text',
+      'hero-media': 'Hero Media',
+      stats: 'Quick Stats',
+      featured: 'Featured Campaign',
+    },
+  },
+  'about-us': {
+    title: 'About Us',
+    sections: {
+      hero: 'Hero',
+      impacts: 'Impact Boxes',
+      story: 'Story + Quote',
+    },
+  },
+  donate: {
+    title: 'Donate',
+    sections: {
+      hero: 'Hero',
+      tiers: 'Donation Tiers',
+    },
+  },
+  volunteer: {
+    title: 'Volunteer',
+    sections: {
+      hero: 'Hero',
+      form: 'Form Settings',
+    },
+  },
+  'contact-us': {
+    title: 'Contact Us',
+    sections: {
+      hero: 'Hero',
+      cards: 'Contact Cards',
+    },
+  },
+};
+
+async function ensureSingletonContentStorage() {
+  await mkdir(SINGLETON_CONTENT_DIR, { recursive: true });
+}
+
+function getSingletonPageFile(pageKey) {
+  return path.join(SINGLETON_CONTENT_DIR, `${pageKey}.json`);
+}
+
+async function readSingletonPageContent(pageKey) {
+  await ensureSingletonContentStorage();
+  const raw = await readFile(getSingletonPageFile(pageKey), 'utf8');
+  return JSON.parse(raw);
+}
+
+async function writeSingletonPageContent(pageKey, content) {
+  await ensureSingletonContentStorage();
+  await writeFile(getSingletonPageFile(pageKey), JSON.stringify(content, null, 2));
+  return content;
+}
+
+function listEditableSingletonPages() {
+  return Object.entries(SINGLETON_PAGE_CONFIG)
+    .map(([pageKey, config]) => {
+      const sections = Object.entries(config.sections)
+        .map(([sectionKey, label]) => `   - ${sectionKey}: ${label}`)
+        .join('\n');
+      return `**${pageKey}** (${config.title})\n${sections}`;
+    })
+    .join('\n\n');
+}
+
+function parseLineEntries(rawValue, minimumParts) {
+  return String(rawValue || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split('|').map((part) => part.trim()))
+    .filter((parts) => parts.length >= minimumParts);
+}
+
+function serializeArrayLines(items, mapper) {
+  return items.map(mapper).join('\n');
+}
+
+function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
+  switch (`${pageKey}:${sectionKey}`) {
+    case 'home:hero':
+      return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
+    case 'home:hero-media':
+      return `Image: ${content.hero.media.imageSrc || 'none'}\nEyebrow: ${content.hero.media.eyebrow}\nHeadline: ${content.hero.media.headline}`;
+    case 'home:stats':
+      return serializeArrayLines(content.quickStats, (item) => `${item.value} | ${item.label} | ${item.color}`);
+    case 'home:featured':
+      return `Slug: ${content.featuredCampaign.slug || '(none)'}\nEyebrow: ${content.featuredCampaign.eyebrow}\nImage: ${content.featuredCampaign.imageSrc || 'none'}`;
+    case 'about-us:hero':
+      return `Badge: ${content.hero.badge}\nTitle: ${content.hero.title}`;
+    case 'about-us:impacts':
+      return serializeArrayLines(content.impacts, (item) => `${item.number} | ${item.label}`);
+    case 'about-us:story':
+      return `Heading: ${content.story.heading}\nQuote: ${content.story.quote}`;
+    case 'donate:hero':
+      return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
+    case 'donate:tiers':
+      return serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`);
+    case 'volunteer:hero':
+      return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
+    case 'volunteer:form':
+      return `Heading: ${content.form.heading}\nRoles: ${content.form.roles.join(', ')}`;
+    case 'contact-us:hero':
+      return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
+    case 'contact-us:cards':
+      return serializeArrayLines(content.contactCards, (item) => `${item.icon} | ${item.title} | ${item.value} | ${item.href || ''}`);
+    default:
+      return 'No preview available.';
+  }
+}
+
+function buildPageSectionModal(sessionId, session) {
+  const content = session.currentContent;
+  const modal = new ModalBuilder()
+    .setCustomId(`page_edit_modal_${sessionId}`)
+    .setTitle(`Edit ${session.pageKey} / ${session.sectionKey}`);
+
+  switch (`${session.pageKey}:${session.sectionKey}`) {
+    case 'home:hero':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Hero title').setStyle(TextInputStyle.Short).setValue(content.hero.title).setRequired(true).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('Hero description').setStyle(TextInputStyle.Paragraph).setValue(content.hero.description).setRequired(true).setMaxLength(600)
+        )
+      );
+      break;
+    case 'home:hero-media':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('imageSrc').setLabel('Hero image path or URL').setStyle(TextInputStyle.Short).setValue(content.hero.media.imageSrc || '').setRequired(false).setMaxLength(200)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('imageAlt').setLabel('Hero image alt text').setStyle(TextInputStyle.Short).setValue(content.hero.media.imageAlt || '').setRequired(false).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('eyebrow').setLabel('Mission eyebrow').setStyle(TextInputStyle.Short).setValue(content.hero.media.eyebrow || '').setRequired(true).setMaxLength(60)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('headline').setLabel('Mission headline').setStyle(TextInputStyle.Paragraph).setValue(content.hero.media.headline || '').setRequired(true).setMaxLength(200)
+        )
+      );
+      break;
+    case 'home:stats':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('stats').setLabel('One per line: value | label | color').setStyle(TextInputStyle.Paragraph).setValue(serializeArrayLines(content.quickStats, (item) => `${item.value} | ${item.label} | ${item.color}`)).setRequired(true).setMaxLength(800)
+        )
+      );
+      break;
+    case 'home:featured':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('slug').setLabel('Featured campaign slug').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.slug || '').setRequired(false).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('eyebrow').setLabel('Featured eyebrow').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.eyebrow || '').setRequired(true).setMaxLength(60)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('imageSrc').setLabel('Image path or URL').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.imageSrc || '').setRequired(false).setMaxLength(200)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('imageAlt').setLabel('Image alt text').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.imageAlt || '').setRequired(false).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('ctaLabel').setLabel('CTA label').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.ctaLabel || '').setRequired(true).setMaxLength(60)
+        )
+      );
+      break;
+    case 'about-us:hero':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('badge').setLabel('Hero badge').setStyle(TextInputStyle.Short).setValue(content.hero.badge).setRequired(true).setMaxLength(80)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Hero title').setStyle(TextInputStyle.Short).setValue(content.hero.title).setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('emphasis').setLabel('Italic emphasis text').setStyle(TextInputStyle.Short).setValue(content.hero.emphasis || '').setRequired(false).setMaxLength(60)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('Hero description').setStyle(TextInputStyle.Paragraph).setValue(content.hero.description).setRequired(true).setMaxLength(300)
+        )
+      );
+      break;
+    case 'about-us:impacts':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('impacts').setLabel('One per line: number | label').setStyle(TextInputStyle.Paragraph).setValue(serializeArrayLines(content.impacts, (item) => `${item.number} | ${item.label}`)).setRequired(true).setMaxLength(600)
+        )
+      );
+      break;
+    case 'about-us:story':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('heading').setLabel('Story heading').setStyle(TextInputStyle.Short).setValue(content.story.heading).setRequired(true).setMaxLength(80)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('quote').setLabel('Quote').setStyle(TextInputStyle.Paragraph).setValue(content.story.quote).setRequired(true).setMaxLength(300)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('paragraphs').setLabel('Paragraphs separated by blank line').setStyle(TextInputStyle.Paragraph).setValue(content.story.paragraphs.join('\n\n')).setRequired(true).setMaxLength(2000)
+        )
+      );
+      break;
+    case 'donate:hero':
+    case 'volunteer:hero':
+    case 'contact-us:hero':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Page title').setStyle(TextInputStyle.Short).setValue(content.hero.title).setRequired(true).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('Page description').setStyle(TextInputStyle.Paragraph).setValue(content.hero.description).setRequired(true).setMaxLength(400)
+        )
+      );
+      break;
+    case 'donate:tiers':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('tiers').setLabel('One per line: amount | impact | description | featured/normal').setStyle(TextInputStyle.Paragraph).setValue(serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`)).setRequired(true).setMaxLength(1800)
+        )
+      );
+      break;
+    case 'volunteer:form':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('heading').setLabel('Form heading').setStyle(TextInputStyle.Short).setValue(content.form.heading).setRequired(true).setMaxLength(100)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('successMessage').setLabel('Success message').setStyle(TextInputStyle.Paragraph).setValue(content.form.successMessage).setRequired(true).setMaxLength(200)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('roles').setLabel('One role per line').setStyle(TextInputStyle.Paragraph).setValue(content.form.roles.join('\n')).setRequired(true).setMaxLength(600)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('submitLabel').setLabel('Submit button label').setStyle(TextInputStyle.Short).setValue(content.form.submitLabel).setRequired(true).setMaxLength(60)
+        )
+      );
+      break;
+    case 'contact-us:cards':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('cards').setLabel('One per line: icon | title | value | href').setStyle(TextInputStyle.Paragraph).setValue(serializeArrayLines(content.contactCards, (item) => `${item.icon} | ${item.title} | ${item.value} | ${item.href || ''}`)).setRequired(true).setMaxLength(1000)
+        )
+      );
+      break;
+    default:
+      return null;
+  }
+
+  return modal;
+}
+
+function parsePageSectionDraft(session, fields) {
+  switch (`${session.pageKey}:${session.sectionKey}`) {
+    case 'home:hero':
+    case 'donate:hero':
+    case 'volunteer:hero':
+    case 'contact-us:hero':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        description: fields.getTextInputValue('description').trim(),
+      };
+    case 'home:hero-media':
+      return {
+        imageSrc: fields.getTextInputValue('imageSrc').trim(),
+        imageAlt: fields.getTextInputValue('imageAlt').trim(),
+        eyebrow: fields.getTextInputValue('eyebrow').trim(),
+        headline: fields.getTextInputValue('headline').trim(),
+      };
+    case 'home:stats':
+      return parseLineEntries(fields.getTextInputValue('stats'), 3).map(([value, label, color]) => ({ value, label, color }));
+    case 'home:featured':
+      return {
+        slug: fields.getTextInputValue('slug').trim(),
+        eyebrow: fields.getTextInputValue('eyebrow').trim(),
+        imageSrc: fields.getTextInputValue('imageSrc').trim(),
+        imageAlt: fields.getTextInputValue('imageAlt').trim(),
+        ctaLabel: fields.getTextInputValue('ctaLabel').trim(),
+      };
+    case 'about-us:hero':
+      return {
+        badge: fields.getTextInputValue('badge').trim(),
+        title: fields.getTextInputValue('title').trim(),
+        emphasis: fields.getTextInputValue('emphasis').trim(),
+        description: fields.getTextInputValue('description').trim(),
+      };
+    case 'about-us:impacts':
+      return parseLineEntries(fields.getTextInputValue('impacts'), 2).map(([number, label]) => ({ number, label }));
+    case 'about-us:story':
+      return {
+        heading: fields.getTextInputValue('heading').trim(),
+        quote: fields.getTextInputValue('quote').trim(),
+        paragraphs: fields.getTextInputValue('paragraphs').split(/\r?\n\r?\n/).map((item) => item.trim()).filter(Boolean),
+      };
+    case 'donate:tiers':
+      return parseLineEntries(fields.getTextInputValue('tiers'), 4).map(([amount, impact, description, featured]) => ({
+        amount,
+        impact,
+        description,
+        featured: /featured|true|yes/i.test(featured),
+      }));
+    case 'volunteer:form':
+      return {
+        heading: fields.getTextInputValue('heading').trim(),
+        successMessage: fields.getTextInputValue('successMessage').trim(),
+        roles: fields.getTextInputValue('roles').split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+        submitLabel: fields.getTextInputValue('submitLabel').trim(),
+      };
+    case 'contact-us:cards':
+      return parseLineEntries(fields.getTextInputValue('cards'), 4).map(([icon, title, value, href]) => ({ icon, title, value, href }));
+    default:
+      return null;
+  }
+}
+
+function applyPageSectionDraft(content, session, draft) {
+  switch (`${session.pageKey}:${session.sectionKey}`) {
+    case 'home:hero':
+    case 'donate:hero':
+    case 'volunteer:hero':
+    case 'contact-us:hero':
+      content.hero = { ...content.hero, ...draft };
+      break;
+    case 'home:hero-media':
+      content.hero.media = { ...content.hero.media, ...draft };
+      break;
+    case 'home:stats':
+      content.quickStats = draft;
+      break;
+    case 'home:featured':
+      content.featuredCampaign = { ...content.featuredCampaign, ...draft };
+      break;
+    case 'about-us:hero':
+      content.hero = { ...content.hero, ...draft };
+      break;
+    case 'about-us:impacts':
+      content.impacts = draft;
+      break;
+    case 'about-us:story':
+      content.story = { ...content.story, ...draft };
+      break;
+    case 'donate:tiers':
+      content.tiers = draft;
+      break;
+    case 'volunteer:form':
+      content.form = { ...content.form, ...draft };
+      break;
+    case 'contact-us:cards':
+      content.contactCards = draft;
+      break;
+    default:
+      break;
+  }
+
+  return content;
+}
+
+function buildPageEditPreview(session, draft) {
+  const preview = typeof draft === 'string'
+    ? draft
+    : Array.isArray(draft)
+    ? draft.map((item) => Object.values(item).join(' | ')).join('\n')
+    : Object.entries(draft).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join('\n');
+
+  return new EmbedBuilder()
+    .setColor(0x7CB342)
+    .setTitle(`Preview: ${SINGLETON_PAGE_CONFIG[session.pageKey].title} / ${SINGLETON_PAGE_CONFIG[session.pageKey].sections[session.sectionKey]}`)
+    .setDescription(preview || 'No preview data')
+    .setFooter({ text: 'Approve to save page content' });
 }
 
 async function saveBlogAttachments(attachments, maxImages = MAX_BLOG_IMAGES) {
@@ -658,6 +1050,7 @@ client.once(Events.ClientReady, async () => {
     await mkdir(BLOG_DIR, { recursive: true });
     await mkdir(BLOG_IMAGES_DIR, { recursive: true });
     await mkdir(CAMPAIGNS_DIR, { recursive: true });
+    await mkdir(SINGLETON_CONTENT_DIR, { recursive: true });
     console.log('✅ Directories verified');
   } catch (err) {
     console.error('❌ Directory creation failed:', err.message);
@@ -702,7 +1095,10 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '!campaign-edit [number]', value: 'Edit details and set active/archived', inline: true },
         { name: '!campaign-delete [number]', value: 'Delete campaign with confirm', inline: true },
         { name: '!campaign-clear-all', value: 'Delete all campaigns with confirm', inline: true },
-        { name: '!campaign-impact', value: 'Update impact numbers manually', inline: true }
+        { name: '!campaign-impact', value: 'Update impact numbers manually', inline: true },
+        { name: '🧩 SINGLETON PAGES', value: '─────────────────────────────', inline: false },
+        { name: '!pages', value: 'List editable singleton pages + sections', inline: true },
+        { name: '!page-edit [page] [section]', value: 'Edit singleton page content', inline: true }
       )
       .setFooter({ text: 'Made for Care4ME' });
     await message.reply({ embeds: [embed] });
@@ -846,6 +1242,76 @@ client.on(Events.MessageCreate, async (message) => {
       console.log('📁 New category added:', categoryName, 'by', message.author.username);
     } else {
       await message.reply(`⚠️ Category "${categoryName}" already exists.`);
+    }
+    return;
+  }
+
+  // !pages
+  if (command === 'pages') {
+    const embed = new EmbedBuilder()
+      .setColor(0x2BA5D7)
+      .setTitle('🧩 Editable Singleton Pages')
+      .setDescription(listEditableSingletonPages())
+      .setFooter({ text: 'Use !page-edit [page] [section]  e.g. !page-edit home stats' });
+
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !page-edit [page] [section]
+  if (command === 'page-edit') {
+    const pageKey = (args[1] || '').toLowerCase();
+    const sectionKey = (args[2] || '').toLowerCase();
+
+    if (!SINGLETON_PAGE_CONFIG[pageKey]) {
+      await message.reply('❓ Usage: `!page-edit [page] [section]`\nExample: `!page-edit home stats`\nRun `!pages` to see valid pages and sections.');
+      return;
+    }
+
+    if (!SINGLETON_PAGE_CONFIG[pageKey].sections[sectionKey]) {
+      const available = Object.entries(SINGLETON_PAGE_CONFIG[pageKey].sections)
+        .map(([key, label]) => `- ${key}: ${label}`)
+        .join('\n');
+      await message.reply(`❓ Invalid section for **${pageKey}**. Available sections:\n${available}`);
+      return;
+    }
+
+    try {
+      const currentContent = await readSingletonPageContent(pageKey);
+      const sessionId = Date.now();
+      pageSessions.set(sessionId, {
+        pageKey,
+        sectionKey,
+        userId: message.author.id,
+        userName: message.author.username,
+        currentContent,
+      });
+      schedulePageSessionCleanup(sessionId);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`page_edit_open_${sessionId}`)
+          .setLabel('📝 Open Edit Form')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`page_edit_cancel_${sessionId}`)
+          .setLabel('❌ Cancel')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2BA5D7)
+        .setTitle(`🧩 Edit ${SINGLETON_PAGE_CONFIG[pageKey].title}`)
+        .addFields(
+          { name: 'Section', value: SINGLETON_PAGE_CONFIG[pageKey].sections[sectionKey], inline: true },
+          { name: 'Current Value', value: getPageSectionCurrentSummary(pageKey, sectionKey, currentContent).slice(0, 1024), inline: false }
+        )
+        .setFooter({ text: 'Open the form, review preview, then save' });
+
+      await message.reply({ embeds: [embed], components: [row] });
+    } catch (error) {
+      console.error('Page edit start error:', error);
+      await message.reply(`❌ Failed to load page content: ${error.message}`);
     }
     return;
   }
@@ -1640,6 +2106,72 @@ async function showCampaignEditPreview(interaction, session, sessionId) {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    if (interaction.isButton() && interaction.customId.startsWith('page_edit_open_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = pageSessions.get(sessionId);
+
+      if (!session) return await safeReply(interaction, '❌ Session expired.');
+      if (session.userId !== interaction.user.id) return await safeReply(interaction, '❌ Only the creator can continue this action.');
+
+      const modal = buildPageSectionModal(sessionId, session);
+      if (!modal) return await safeReply(interaction, '❌ This page section editor is not available yet.');
+      return await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('page_edit_modal_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = pageSessions.get(sessionId);
+
+      if (!session) return await safeReply(interaction, '❌ Session expired.');
+
+      const draft = parsePageSectionDraft(session, interaction.fields);
+      if (draft == null) return await safeReply(interaction, '❌ Failed to parse page content.');
+
+      session.draft = draft;
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`page_edit_save_${sessionId}`).setLabel('✅ Save Section').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`page_edit_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+      );
+
+      const embed = buildPageEditPreview(session, draft);
+      return await safeReply(interaction, { embeds: [embed], components: [row] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('page_edit_save_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = pageSessions.get(sessionId);
+
+      if (!session || session.draft == null) return await safeReply(interaction, '❌ Session expired.');
+
+      await safeDeferReply(interaction);
+      try {
+        const nextContent = JSON.parse(JSON.stringify(session.currentContent));
+        const savedContent = applyPageSectionDraft(nextContent, session, session.draft);
+        await writeSingletonPageContent(session.pageKey, savedContent);
+        pageSessions.delete(sessionId);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Page Section Updated')
+          .addFields(
+            { name: 'Page', value: SINGLETON_PAGE_CONFIG[session.pageKey].title, inline: true },
+            { name: 'Section', value: SINGLETON_PAGE_CONFIG[session.pageKey].sections[session.sectionKey], inline: true }
+          )
+          .setFooter({ text: 'Website now reads updated content from JSON' });
+
+        return await interaction.editReply({ embeds: [embed], components: [] });
+      } catch (error) {
+        return await interaction.editReply({ content: `❌ Failed to save page content: ${error.message}`, embeds: [], components: [] });
+      }
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('page_edit_cancel_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      pageSessions.delete(sessionId);
+      return await safeReply(interaction, '❌ Page edit cancelled.');
+    }
+
     // ───────────────────────────────────────────────────────────────────────────────
     // BLOG CATEGORY SELECT
     // ───────────────────────────────────────────────────────────────────────────────

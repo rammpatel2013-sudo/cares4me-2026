@@ -1,0 +1,42 @@
+{
+  "hero": {
+    "badge": "✓ 501(c)(3) Nonprofit",
+    "title": "Giving medical equipment a second life.",
+    "emphasis": "a second life.",
+    "description": "Restoring health and renewing hope — one wheelchair, one walker, one family at a time."
+  },
+  "impacts": [
+    { "number": "$750K+", "label": "Goods Redistributed" },
+    { "number": "10-20", "label": "NGO Partners" },
+    { "number": "2024", "label": "Founded" },
+    { "number": "0%", "label": "Overhead on Donations" }
+  ],
+  "story": {
+    "heading": "Our Story",
+    "paragraphs": [
+      "Care4ME was founded in 2024 by Darsh Gajera, a high school student from New Jersey who saw a simple but urgent problem: across the United States, wheelchairs, walkers, hospital beds, and care supplies sit unused in garages and storage rooms — while families in rural communities around the world go without the most basic mobility and health equipment.",
+      "What started as a small family effort — collecting items, inspecting them in the garage, and shipping them through trusted church and NGO partners — has grown into something that has redistributed over $750,000 in goods to under-resourced communities worldwide.",
+      "We operate the way we believe a nonprofit should: lean, transparent, and mission-first. Our team is small — Darsh, family members, and a growing group of volunteers. Our overhead is zero. Every donation goes directly toward getting supplies to the people who need them.",
+      "Today Care4ME works with 10–20 partner churches and NGOs worldwide who handle last-mile distribution — getting items directly into the hands of families in rural areas that larger organizations often can't reach."
+    ],
+    "quote": "Every item we ship represents something a family couldn't otherwise afford. A wheelchair isn't just equipment — it's independence."
+  },
+  "mission": {
+    "heading": "Our Mission & Values",
+    "description": "Our mission is to restore health and renew hope by giving used medical equipment and care items a second life in under-resourced rural communities worldwide."
+  },
+  "values": [
+    { "icon": "❤️", "title": "Health First", "description": "Every decision guided by the health and dignity of those we serve." },
+    { "icon": "♻️", "title": "Zero Waste", "description": "Surplus in one part of the world should never go to waste." },
+    { "icon": "🤝", "title": "Trust-Based", "description": "We work through partners who have earned trust in their communities." },
+    { "icon": "💰", "title": "Zero Overhead", "description": "Every dollar donated covers our mission — nothing else." }
+  ],
+  "cta": {
+    "title": "Ready to Make an Impact?",
+    "description": "Donate items, cover shipping costs, or partner with us.",
+    "buttons": [
+      { "label": "Donate Now", "href": "/donate", "style": "primary-green" },
+      { "label": "Volunteer", "href": "/volunteer", "style": "outline-white" }
+    ]
+  }
+}
