@@ -57,6 +57,7 @@ export default async function HomePage() {
     (linkedCampaign?.metricType ?? content.featuredCampaign.fallbackMetricType) === 'count' ? 'count' : 'currency';
   const featuredMetricUnit = linkedCampaign?.metricUnit ?? content.featuredCampaign.fallbackMetricUnit;
   const featuredPercentage = computePercentage(featuredRaised, featuredTarget);
+  const heroMediaImageSrc = resolveImageSrc(content.hero.media.imageSrc || '');
   const featuredImageSrc = resolveImageSrc(content.featuredCampaign.imageSrc || '');
 
   return (
@@ -85,9 +86,9 @@ export default async function HomePage() {
               </div>
             </div>
             <div className="bg-[#E8F4F8] rounded-2xl p-12 h-96 flex items-center justify-center overflow-hidden">
-              {content.hero.media.imageSrc ? (
+              {heroMediaImageSrc ? (
                 <img
-                  src={content.hero.media.imageSrc}
+                  src={heroMediaImageSrc}
                   alt={content.hero.media.imageAlt || content.hero.title}
                   className="h-full w-full rounded-xl object-cover"
                 />

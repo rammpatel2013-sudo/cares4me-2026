@@ -35,8 +35,17 @@ type AboutUsContent = {
 };
 
 function renderHeroTitle(title: string, emphasis: string) {
-  if (!emphasis || !title.includes(emphasis)) {
+  if (!emphasis) {
     return title;
+  }
+
+  if (!title.includes(emphasis)) {
+    return (
+      <>
+        {title}{' '}
+        <em className="italic text-[#7CB342]">{emphasis}</em>
+      </>
+    );
   }
 
   const [before, after] = title.split(emphasis);

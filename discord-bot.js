@@ -241,6 +241,10 @@ function serializeArrayLines(items, mapper) {
   return items.map(mapper).join('\n');
 }
 
+function clampModalValue(value, maxLength = 3900) {
+  return String(value || '').slice(0, maxLength);
+}
+
 function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
   switch (`${pageKey}:${sectionKey}`) {
     case 'home:hero':
@@ -402,7 +406,7 @@ function buildPageSectionModal(sessionId, session) {
     case 'donate:tiers':
       modal.addComponents(
         new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('tiers').setLabel('One per line: amount | impact | description | featured/normal').setStyle(TextInputStyle.Paragraph).setValue(serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`)).setRequired(true).setMaxLength(1800)
+          new TextInputBuilder().setCustomId('tiers').setLabel('One per line: amount | impact | description | featured/normal').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`))).setRequired(true).setMaxLength(4000)
         )
       );
       break;
