@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   }
 
   const safeFilename = path.basename(filename);
-  const publicDir = path.join(process.cwd(), 'public');
+  const publicDir = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public');
   const candidatePaths = [
     path.join(publicDir, 'blog-images', safeFilename),
     path.join(publicDir, 'uploads', safeFilename),
