@@ -406,7 +406,7 @@ function buildPageSectionModal(sessionId, session) {
     case 'donate:tiers':
       modal.addComponents(
         new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('tiers').setLabel('One per line: amount | impact | description | featured/normal').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`))).setRequired(true).setMaxLength(4000)
+          new TextInputBuilder().setCustomId('tiers').setLabel('Line format: amount | impact | desc | flag').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`))).setRequired(true).setMaxLength(4000)
         )
       );
       break;
@@ -1159,7 +1159,8 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '🧩 SINGLETON PAGES', value: '─────────────────────────────', inline: false },
         { name: '!pages', value: 'List editable singleton pages + sections', inline: true },
         { name: '!page-edit [page] [section]', value: 'Edit singleton page content', inline: true },
-        { name: '!page-image home featured', value: 'Attach image for home featured campaign block', inline: true }
+        { name: '!page-image home featured', value: 'Attach image for home featured campaign block', inline: true },
+        { name: '!page-image home hero-media', value: 'Attach image for home hero media block', inline: true }
       )
       .setFooter({ text: 'Made for Care4ME' });
     await message.reply({ embeds: [embed] });
@@ -1319,43 +1320,56 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
 
-  // !page-image home featured (attach image in same message)
+  // !page-image home featured|hero-media (attach image in same message)
   if (command === 'page-image') {
     const pageKey = (args[1] || '').toLowerCase();
     const sectionKey = (args[2] || '').toLowerCase();
 
-    if (pageKey !== 'home' || sectionKey !== 'featured') {
-      await message.reply('❓ Usage: `!page-image home featured` and attach one image in the same message.');
+    if (pageKey !== 'home' || !['featured', 'hero-media'].includes(sectionKey)) {
+      await message.reply('❓ Usage: `!page-image home featured` OR `!page-image home hero-media` and attach one image in the same message.');
       return;
     }
 
     const image = [...message.attachments.values()].find((att) => att.contentType?.startsWith('image'));
     if (!image) {
-      await message.reply('❌ Attach an image in the same message. Example: `!page-image home featured` + image file.');
+      await message.reply('❌ Attach an image in the same message. Example: `!page-image home hero-media` + image file.');
       return;
     }
 
     try {
-      const imagePath = await saveSingletonSectionImage(image, { sectionPrefix: 'home-featured' });
+      const imagePath = await saveSingletonSectionImage(image, { sectionPrefix: sectionKey === 'featured' ? 'home-featured' : 'home-hero-media' });
       const content = await readSingletonPageContent('home');
-      content.featuredCampaign = {
-        ...content.featuredCampaign,
-        imageSrc: imagePath,
-        imageAlt: content.featuredCampaign.imageAlt || content.featuredCampaign.fallbackTitle || 'Featured campaign image',
-      };
+
+      if (sectionKey === 'featured') {
+        content.featuredCampaign = {
+          ...content.featuredCampaign,
+          imageSrc: imagePath,
+          imageAlt: content.featuredCampaign.imageAlt || content.featuredCampaign.fallbackTitle || 'Featured campaign image',
+        };
+      } else {
+        content.hero = {
+          ...content.hero,
+          media: {
+            ...content.hero.media,
+            imageSrc: imagePath,
+            imageAlt: content.hero.media.imageAlt || content.hero.media.headline || content.hero.title || 'Hero media image',
+          },
+        };
+      }
+
       await writeSingletonPageContent('home', content);
 
       const embed = new EmbedBuilder()
         .setColor(0x7CB342)
-        .setTitle('✅ Home Featured Image Updated')
+        .setTitle(sectionKey === 'featured' ? '✅ Home Featured Image Updated' : '✅ Home Hero Media Image Updated')
         .setDescription(`Saved image to: ${imagePath}`)
         .setImage(image.url)
-        .setFooter({ text: 'Homepage featured campaign block now uses this image path' });
+        .setFooter({ text: sectionKey === 'featured' ? 'Homepage featured campaign block now uses this image path' : 'Homepage hero media block now uses this image path' });
 
       await message.reply({ embeds: [embed] });
     } catch (error) {
       console.error('Page image upload error:', error);
-      await message.reply(`❌ Failed to upload featured image: ${error.message}`);
+      await message.reply(`❌ Failed to upload image: ${error.message}`);
     }
     return;
   }
