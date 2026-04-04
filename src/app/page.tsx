@@ -32,6 +32,17 @@ function buttonClass(style: string) {
   }
 }
 
+function resolveImageSrc(imageSrc: string) {
+  if (!imageSrc) return '';
+
+  if (imageSrc.startsWith('/uploads/') || imageSrc.startsWith('/blog-images/') || imageSrc.startsWith('/images/')) {
+    const filename = imageSrc.split('/').filter(Boolean).pop();
+    return filename ? `/api/image?file=${encodeURIComponent(filename)}` : imageSrc;
+  }
+
+  return imageSrc;
+}
+
 export default async function HomePage() {
   const content = await loadHomeContent();
   const linkedCampaign = content.featuredCampaign.slug
@@ -46,6 +57,7 @@ export default async function HomePage() {
     (linkedCampaign?.metricType ?? content.featuredCampaign.fallbackMetricType) === 'count' ? 'count' : 'currency';
   const featuredMetricUnit = linkedCampaign?.metricUnit ?? content.featuredCampaign.fallbackMetricUnit;
   const featuredPercentage = computePercentage(featuredRaised, featuredTarget);
+  const featuredImageSrc = resolveImageSrc(content.featuredCampaign.imageSrc || '');
 
   return (
     <main className="bg-white">
@@ -123,9 +135,9 @@ export default async function HomePage() {
           <h2 className="text-4xl font-black text-center text-[#1E5A96] mb-12">Featured Campaign</h2>
           <div className="bg-gradient-to-br from-[#E8F4F8] to-[#F0F8E8] rounded-2xl p-12 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="h-96 bg-[#D0E8F2] rounded-xl flex items-center justify-center overflow-hidden">
-              {content.featuredCampaign.imageSrc ? (
+              {featuredImageSrc ? (
                 <img
-                  src={content.featuredCampaign.imageSrc}
+                  src={featuredImageSrc}
                   alt={content.featuredCampaign.imageAlt || featuredTitle}
                   className="h-full w-full object-cover"
                 />
