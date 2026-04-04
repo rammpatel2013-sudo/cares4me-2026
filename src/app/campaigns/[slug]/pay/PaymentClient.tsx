@@ -35,9 +35,17 @@ function computePercentage(raised: number, target: number) {
   return Math.max(0, Math.min(100, Math.round((raised / target) * 100)));
 }
 
-export default function PaymentClient({ campaign }: { campaign: CampaignData }) {
-  const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
-  const [customAmount, setCustomAmount] = useState('');
+export default function PaymentClient({ campaign, initialAmount }: { campaign: CampaignData; initialAmount?: number }) {
+  const normalizedInitialAmount =
+    initialAmount && Number.isFinite(initialAmount) && initialAmount >= 1
+      ? Math.round(initialAmount)
+      : null;
+  const initialPreset = normalizedInitialAmount && PRESET_AMOUNTS.includes(normalizedInitialAmount)
+    ? normalizedInitialAmount
+    : null;
+
+  const [selectedPreset, setSelectedPreset] = useState<number | null>(initialPreset);
+  const [customAmount, setCustomAmount] = useState(initialPreset ? '' : normalizedInitialAmount ? String(normalizedInitialAmount) : '');
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 

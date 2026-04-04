@@ -1,9 +1,21 @@
 import { loadDonateContent } from '@/lib/singletonContent';
+import { loadCampaigns } from '@/lib/getCampaigns';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DonatePage() {
   const content = await loadDonateContent();
+  const campaigns = await loadCampaigns();
+  const primaryCampaign = campaigns[0] || null;
+
+  const getTierHref = (amount: string) => {
+    if (!primaryCampaign) return '/campaigns';
+    const numericAmount = Number(String(amount).replace(/[^0-9.]/g, ''));
+    if (Number.isFinite(numericAmount) && numericAmount > 0) {
+      return `/campaigns/${primaryCampaign.slug}/pay?amount=${numericAmount}`;
+    }
+    return `/campaigns/${primaryCampaign.slug}/pay`;
+  };
 
   return (
     <main className="bg-white">
@@ -22,21 +34,23 @@ export default async function DonatePage() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {content.tiers.slice(0, 4).map(({ amount, impact, description }, i) => (
-              <div
+              <a
                 key={i}
+                href={getTierHref(amount)}
                 className="bg-[#F5F5F5] border-2 border-gray-200 hover:border-[#2BA5D7] p-6 rounded-xl transition cursor-pointer"
               >
                 <div className="text-2xl font-black text-[#1E5A96] mb-2">{amount}</div>
                 <p className="text-sm font-bold text-[#7CB342] mb-2">{impact}</p>
                 <p className="text-xs text-gray-600">{description}</p>
-              </div>
+              </a>
             ))}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {content.tiers.slice(4).map(({ amount, impact, description, featured }, i) => (
-              <div
+              <a
                 key={i}
+                href={getTierHref(amount)}
                 className={`p-6 rounded-xl transition cursor-pointer ${
                   featured ? "ring-2 ring-[#2BA5D7] bg-[#E8F4F8]" : "bg-[#F5F5F5] border-2 border-gray-200 hover:border-[#2BA5D7]"
                 }`}
@@ -44,7 +58,7 @@ export default async function DonatePage() {
                 <div className="text-2xl font-black text-[#1E5A96] mb-2">{amount}</div>
                 <p className="text-sm font-bold text-[#7CB342] mb-2">{impact}</p>
                 <p className="text-xs text-gray-600">{description}</p>
-              </div>
+              </a>
             ))}
           </div>
         </div>
@@ -84,9 +98,12 @@ export default async function DonatePage() {
           <p className="text-xl text-gray-700 mb-8">
             {content.monthlyGiving.description}
           </p>
-          <button className="bg-[#7CB342] text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-[#6BA032] transition">
+          <a
+            href={primaryCampaign ? `/campaigns/${primaryCampaign.slug}/pay` : '/campaigns'}
+            className="inline-block bg-[#7CB342] text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-[#6BA032] transition"
+          >
             {content.monthlyGiving.buttonLabel}
-          </button>
+          </a>
         </div>
       </section>
     </main>

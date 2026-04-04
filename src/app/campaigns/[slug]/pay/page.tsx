@@ -6,11 +6,17 @@ export const dynamic = 'force-dynamic';
 
 export default async function CampaignPayPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ amount?: string }>;
 }) {
   const { slug } = await params;
+  const { amount } = await searchParams;
   const campaign = await loadCampaignBySlug(slug);
+
+  const initialAmountValue = Number(String(amount || '').replace(/[^0-9.]/g, ''));
+  const initialAmount = Number.isFinite(initialAmountValue) && initialAmountValue > 0 ? initialAmountValue : undefined;
 
   if (!campaign) notFound();
 
@@ -42,7 +48,7 @@ export default async function CampaignPayPage({
           ← Back to Campaigns
         </a>
 
-        <PaymentClient campaign={campaign} />
+        <PaymentClient campaign={campaign} initialAmount={initialAmount} />
       </div>
     </main>
   );
