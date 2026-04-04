@@ -676,14 +676,16 @@ client.on(Events.MessageCreate, async (message) => {
   const args = message.content.slice(1).trim().split(/\s+/);
   const command = args[0].toLowerCase();
 
-  // !help
-  if (command === 'help') {
+  // !help, !all, !commands
+  if (command === 'help' || command === 'all' || command === 'commands') {
     const embed = new EmbedBuilder()
       .setColor(0x2BA5D7)
       .setTitle('📚 Care4ME Bot Commands')
       .addFields(
         { name: '📸 Upload Image', value: 'Just drop an image in this channel', inline: false },
         { name: '!help', value: 'Show this help message', inline: true },
+        { name: '!all', value: 'Show all bot commands', inline: true },
+        { name: '!commands', value: 'Same as !all', inline: true },
         { name: '!list', value: 'Show all uploaded files', inline: true },
         { name: '!delete [number]', value: 'Delete by number from list', inline: true },
         { name: '!delete all', value: 'Delete ALL uploads', inline: true },
@@ -1523,7 +1525,6 @@ client.on(Events.MessageCreate, async (message) => {
           .setPlaceholder('📂 Where should this image go?')
           .addOptions([
             { label: '🖼️ Gallery', value: 'gallery', description: 'Add to photo gallery' },
-            { label: '📰 Campaign', value: 'campaign', description: 'Add to campaigns page' },
             { label: '👥 Team', value: 'team', description: 'Add to team page' },
             { label: '📱 Social Only', value: 'social', description: 'Post to social media only' }
           ])
@@ -2621,14 +2622,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
             label: `🏷️ ${cat}`,
             value: cat
           }))
-        ];
-      } else if (session.destination === 'campaign') {
-        categoryOptions = [
-          { label: '🏥 Medical Equipment', value: 'Medical Equipment' },
-          { label: '🍎 Food Drive', value: 'Food Drive' },
-          { label: '📚 Education', value: 'Education' },
-          { label: '🏠 Housing', value: 'Housing' },
-          { label: '💊 Healthcare', value: 'Healthcare' }
         ];
       } else if (session.destination === 'team') {
         categoryOptions = [
