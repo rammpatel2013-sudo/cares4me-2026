@@ -1,0 +1,54 @@
+{
+  "hero": {
+    "title": "Partner With Us",
+    "description": "Hospitals, corporations, and organizations trust Care4ME. Join us in transforming lives."
+  },
+  "partners": {
+    "title": "Our Partners",
+    "items": [
+      { "name": "St. Barnabas Medical Center", "type": "Hospital Partner" },
+      { "name": "Feeding America", "type": "Senior Care Network" },
+      { "name": "Meals on Wheels America", "type": "Nutrition Partner" },
+      { "name": "No Kid Hungry", "type": "Child Welfare" },
+      { "name": "Women's Aid", "type": "Social Support" },
+      { "name": "Blind School India", "type": "Education Partner" }
+    ]
+  },
+  "ngos": {
+    "title": "NGO We Donate To",
+    "description": "These nonprofit partners receive direct support through Care4ME initiatives.",
+    "items": [
+      {
+        "name": "No Kid Hungry",
+        "logoSrc": "",
+        "href": "https://www.nokidhungry.org"
+      },
+      {
+        "name": "Feeding America",
+        "logoSrc": "",
+        "href": "https://www.feedingamerica.org"
+      },
+      {
+        "name": "Meals on Wheels America",
+        "logoSrc": "",
+        "href": "https://www.mealsonwheelsamerica.org"
+      },
+      {
+        "name": "Women's Aid",
+        "logoSrc": "",
+        "href": ""
+      },
+      {
+        "name": "Blind School India",
+        "logoSrc": "",
+        "href": ""
+      }
+    ]
+  },
+  "cta": {
+    "title": "Ready to Partner?",
+    "description": "Let's talk about how we can work together to create real impact.",
+    "buttonLabel": "Contact Us",
+    "buttonHref": "/contact-us"
+  }
+}

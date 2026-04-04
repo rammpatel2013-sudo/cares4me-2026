@@ -196,7 +196,15 @@ const SINGLETON_PAGE_CONFIG = {
       tiers: 'Donation Tiers',
       partners: 'Partners',
       'trust-badges': 'Trust Badges',
-      'monthly-giving': 'Monthly Giving',
+    },
+  },
+  partners: {
+    title: 'Partners',
+    sections: {
+      hero: 'Hero',
+      partners: 'Our Partners',
+      ngos: 'NGO We Donate To',
+      cta: 'Call To Action',
     },
   },
   volunteer: {
@@ -396,6 +404,19 @@ function validatePageSectionDraft(session, draft) {
       if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one FAQ CTA card using: icon | title | value | href';
       if (draft.some((card) => card.href && !isValidPageHref(card.href))) return 'Each FAQ CTA card href must start with /, http(s)://, mailto:, or tel:.';
       return null;
+    case 'partners:partners':
+      if (!draft.title) return 'Our Partners title is required.';
+      if (!Array.isArray(draft.items) || draft.items.length === 0) return 'Add at least one partner using: name | type';
+      return null;
+    case 'partners:ngos':
+      if (!draft.title || !draft.description) return 'NGO title and description are required.';
+      if (!Array.isArray(draft.items) || draft.items.length === 0) return 'Add at least one NGO using: name | logoSrc | href';
+      if (draft.items.some((item) => item.href && !isValidPageHref(item.href))) return 'Each NGO href must start with /, http(s)://, mailto:, or tel:.';
+      return null;
+    case 'partners:cta':
+      if (!draft.title || !draft.description || !draft.buttonLabel || !draft.buttonHref) return 'CTA title, description, button label, and button href are required.';
+      if (!isValidPageHref(draft.buttonHref)) return 'CTA button href must start with /, http(s)://, mailto:, or tel:.';
+      return null;
     default:
       return null;
   }
@@ -435,8 +456,6 @@ function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
       return `Title: ${content.partners.title}\n${serializeArrayLines(content.partners.items, (item) => `${item.name} | ${item.type}`)}`;
     case 'donate:trust-badges':
       return `Title: ${content.trustBadges.title}\nItems: ${(content.trustBadges.items || []).join(', ')}`;
-    case 'donate:monthly-giving':
-      return `Title: ${content.monthlyGiving.title}\nDescription: ${content.monthlyGiving.description}\nButton: ${content.monthlyGiving.buttonLabel}`;
     case 'volunteer:hero':
       return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
     case 'volunteer:form':
@@ -457,6 +476,14 @@ function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
       return `Title: ${content.cta.title}\nDescription: ${content.cta.description}\nButton Label: ${content.cta.buttonLabel}\nButton Href: ${content.cta.buttonHref}`;
     case 'faq-page:cta-cards':
       return serializeArrayLines(content.ctaCards, (item) => `${item.icon} | ${item.title} | ${item.value} | ${item.href || ''}`);
+    case 'partners:hero':
+      return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
+    case 'partners:partners':
+      return `Title: ${content.partners.title}\n${serializeArrayLines(content.partners.items, (item) => `${item.name} | ${item.type}`)}`;
+    case 'partners:ngos':
+      return `Title: ${content.ngos.title}\nDescription: ${content.ngos.description}\n${serializeArrayLines(content.ngos.items, (item) => `${item.name} | ${item.logoSrc || ''} | ${item.href || ''}`)}`;
+    case 'partners:cta':
+      return `Title: ${content.cta.title}\nDescription: ${content.cta.description}\nButton Label: ${content.cta.buttonLabel}\nButton Href: ${content.cta.buttonHref}`;
     default:
       return 'No preview available.';
   }
@@ -620,6 +647,7 @@ function buildPageSectionModal(sessionId, session) {
     case 'volunteer:hero':
     case 'contact-us:hero':
     case 'faq-page:hero':
+    case 'partners:hero':
       modal.addComponents(
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('title').setLabel('Page title').setStyle(TextInputStyle.Short).setValue(content.hero.title).setRequired(true).setMaxLength(120)
@@ -653,19 +681,6 @@ function buildPageSectionModal(sessionId, session) {
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('items').setLabel('One badge per line').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue((content.trustBadges.items || []).join('\n'))).setRequired(true).setMaxLength(2000)
-        )
-      );
-      break;
-    case 'donate:monthly-giving':
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('title').setLabel('Section title').setStyle(TextInputStyle.Short).setValue(content.monthlyGiving.title || '').setRequired(true).setMaxLength(140)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('description').setLabel('Section description').setStyle(TextInputStyle.Paragraph).setValue(content.monthlyGiving.description || '').setRequired(true).setMaxLength(500)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('buttonLabel').setLabel('Button label').setStyle(TextInputStyle.Short).setValue(content.monthlyGiving.buttonLabel || '').setRequired(true).setMaxLength(80)
         )
       );
       break;
@@ -748,6 +763,45 @@ function buildPageSectionModal(sessionId, session) {
         )
       );
       break;
+    case 'partners:partners':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Our partners title').setStyle(TextInputStyle.Short).setValue(content.partners.title || '').setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('items').setLabel('Line: name | type').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.partners.items, (item) => `${item.name} | ${item.type}`))).setRequired(true).setMaxLength(3500)
+        )
+      );
+      break;
+    case 'partners:ngos':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('NGO section title').setStyle(TextInputStyle.Short).setValue(content.ngos.title || '').setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('NGO section description').setStyle(TextInputStyle.Paragraph).setValue(content.ngos.description || '').setRequired(true).setMaxLength(300)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('items').setLabel('Line: name | logoSrc | href').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.ngos.items, (item) => `${item.name} | ${item.logoSrc || ''} | ${item.href || ''}`))).setRequired(true).setMaxLength(3800)
+        )
+      );
+      break;
+    case 'partners:cta':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('CTA title').setStyle(TextInputStyle.Short).setValue(content.cta.title || '').setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('CTA description').setStyle(TextInputStyle.Paragraph).setValue(content.cta.description || '').setRequired(true).setMaxLength(300)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttonLabel').setLabel('Button label').setStyle(TextInputStyle.Short).setValue(content.cta.buttonLabel || '').setRequired(true).setMaxLength(80)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttonHref').setLabel('Button href').setStyle(TextInputStyle.Short).setValue(content.cta.buttonHref || '').setRequired(true).setMaxLength(200)
+        )
+      );
+      break;
     default:
       return null;
   }
@@ -762,6 +816,7 @@ function parsePageSectionDraft(session, fields) {
     case 'volunteer:hero':
     case 'contact-us:hero':
     case 'faq-page:hero':
+    case 'partners:hero':
       return {
         title: fields.getTextInputValue('title').trim(),
         description: fields.getTextInputValue('description').trim(),
@@ -843,12 +898,6 @@ function parsePageSectionDraft(session, fields) {
         title: fields.getTextInputValue('title').trim(),
         items: fields.getTextInputValue('items').split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
       };
-    case 'donate:monthly-giving':
-      return {
-        title: fields.getTextInputValue('title').trim(),
-        description: fields.getTextInputValue('description').trim(),
-        buttonLabel: fields.getTextInputValue('buttonLabel').trim(),
-      };
     case 'volunteer:form':
       return {
         heading: fields.getTextInputValue('heading').trim(),
@@ -881,6 +930,24 @@ function parsePageSectionDraft(session, fields) {
       };
     case 'faq-page:cta-cards':
       return parseLineEntries(fields.getTextInputValue('ctaCards'), 4).map(([icon, title, value, href]) => ({ icon, title, value, href }));
+    case 'partners:partners':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        items: parseLineEntries(fields.getTextInputValue('items'), 2).map(([name, type]) => ({ name, type })),
+      };
+    case 'partners:ngos':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        description: fields.getTextInputValue('description').trim(),
+        items: parseLineEntries(fields.getTextInputValue('items'), 3).map(([name, logoSrc, href]) => ({ name, logoSrc, href })),
+      };
+    case 'partners:cta':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        description: fields.getTextInputValue('description').trim(),
+        buttonLabel: fields.getTextInputValue('buttonLabel').trim(),
+        buttonHref: fields.getTextInputValue('buttonHref').trim(),
+      };
     default:
       return null;
   }
@@ -893,6 +960,7 @@ function applyPageSectionDraft(content, session, draft) {
     case 'volunteer:hero':
     case 'contact-us:hero':
     case 'faq-page:hero':
+    case 'partners:hero':
       content.hero = { ...content.hero, ...draft };
       break;
     case 'home:hero-media':
@@ -937,9 +1005,6 @@ function applyPageSectionDraft(content, session, draft) {
     case 'donate:trust-badges':
       content.trustBadges = { ...content.trustBadges, ...draft };
       break;
-    case 'donate:monthly-giving':
-      content.monthlyGiving = { ...content.monthlyGiving, ...draft };
-      break;
     case 'volunteer:form':
       content.form = { ...content.form, ...draft };
       break;
@@ -960,6 +1025,15 @@ function applyPageSectionDraft(content, session, draft) {
       break;
     case 'faq-page:cta-cards':
       content.ctaCards = draft;
+      break;
+    case 'partners:partners':
+      content.partners = { ...content.partners, ...draft };
+      break;
+    case 'partners:ngos':
+      content.ngos = { ...content.ngos, ...draft };
+      break;
+    case 'partners:cta':
+      content.cta = { ...content.cta, ...draft };
       break;
     default:
       break;

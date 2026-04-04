@@ -92,20 +92,6 @@ export default async function DonatePage() {
         </div>
       </section>
 
-      <section className="py-16 px-4 sm:px-6 bg-white">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-black text-[#1E5A96] mb-6">{content.monthlyGiving.title}</h2>
-          <p className="text-xl text-gray-700 mb-8">
-            {content.monthlyGiving.description}
-          </p>
-          <a
-            href={primaryCampaign ? `/campaigns/${primaryCampaign.slug}/pay` : '/campaigns'}
-            className="inline-block bg-[#7CB342] text-white px-8 py-4 rounded-lg font-bold text-lg hover:bg-[#6BA032] transition"
-          >
-            {content.monthlyGiving.buttonLabel}
-          </a>
-        </div>
-      </section>
     </main>
   );
 }

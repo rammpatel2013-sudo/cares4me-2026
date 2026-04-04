@@ -37,3 +37,20 @@ h1, h2, h3, h4, h5, h6, .font-black, .font-bold {
   font-family: var(--font-poppins);
   font-weight: 700;
 }
+
+@keyframes ngo-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.ngo-marquee-track {
+  animation: ngo-marquee 28s linear infinite;
+}
+
+.ngo-marquee-track:hover {
+  animation-play-state: paused;
+}
