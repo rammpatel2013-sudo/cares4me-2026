@@ -249,7 +249,7 @@ function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
     case 'home:stats':
       return serializeArrayLines(content.quickStats, (item) => `${item.value} | ${item.label} | ${item.color}`);
     case 'home:featured':
-      return `Slug: ${content.featuredCampaign.slug || '(none)'}\nEyebrow: ${content.featuredCampaign.eyebrow}\nImage: ${content.featuredCampaign.imageSrc || 'none'}`;
+      return `Slug: ${content.featuredCampaign.slug || '(none)'}\nEyebrow: ${content.featuredCampaign.eyebrow}\nTitle: ${content.featuredCampaign.fallbackTitle || ''}\nDescription: ${content.featuredCampaign.fallbackDescription || ''}\nImage: ${content.featuredCampaign.imageSrc || 'none'}`;
     case 'about-us:hero':
       return `Badge: ${content.hero.badge}\nTitle: ${content.hero.title}`;
     case 'about-us:impacts':
@@ -320,6 +320,12 @@ function buildPageSectionModal(sessionId, session) {
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('eyebrow').setLabel('Featured eyebrow').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.eyebrow || '').setRequired(true).setMaxLength(60)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('fallbackTitle').setLabel('Fallback campaign title').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.fallbackTitle || '').setRequired(true).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('fallbackDescription').setLabel('Fallback campaign description').setStyle(TextInputStyle.Paragraph).setValue(content.featuredCampaign.fallbackDescription || '').setRequired(true).setMaxLength(700)
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('imageSrc').setLabel('Image path or URL').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.imageSrc || '').setRequired(false).setMaxLength(200)
@@ -440,6 +446,8 @@ function parsePageSectionDraft(session, fields) {
       return {
         slug: fields.getTextInputValue('slug').trim(),
         eyebrow: fields.getTextInputValue('eyebrow').trim(),
+        fallbackTitle: fields.getTextInputValue('fallbackTitle').trim(),
+        fallbackDescription: fields.getTextInputValue('fallbackDescription').trim(),
         imageSrc: fields.getTextInputValue('imageSrc').trim(),
         imageAlt: fields.getTextInputValue('imageAlt').trim(),
         ctaLabel: fields.getTextInputValue('ctaLabel').trim(),
