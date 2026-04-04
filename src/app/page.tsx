@@ -85,12 +85,12 @@ export default async function HomePage() {
                 </a>
               </div>
             </div>
-            <div className="bg-[#E8F4F8] rounded-2xl p-12 h-96 flex items-center justify-center overflow-hidden">
+            <div className="bg-[#E8F4F8] rounded-2xl p-8 h-96 flex items-center justify-center overflow-hidden">
               {heroMediaImageSrc ? (
                 <img
                   src={heroMediaImageSrc}
                   alt={content.hero.media.imageAlt || content.hero.title}
-                  className="h-full w-full rounded-xl object-cover"
+                  className="h-full w-full rounded-xl object-contain bg-white/60"
                 />
               ) : (
                 <div className="text-center">
