@@ -328,12 +328,6 @@ function buildPageSectionModal(sessionId, session) {
           new TextInputBuilder().setCustomId('fallbackDescription').setLabel('Fallback campaign description').setStyle(TextInputStyle.Paragraph).setValue(content.featuredCampaign.fallbackDescription || '').setRequired(true).setMaxLength(700)
         ),
         new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('imageSrc').setLabel('Image path or URL').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.imageSrc || '').setRequired(false).setMaxLength(200)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder().setCustomId('imageAlt').setLabel('Image alt text').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.imageAlt || '').setRequired(false).setMaxLength(120)
-        ),
-        new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('ctaLabel').setLabel('CTA label').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.ctaLabel || '').setRequired(true).setMaxLength(60)
         )
       );
@@ -448,8 +442,6 @@ function parsePageSectionDraft(session, fields) {
         eyebrow: fields.getTextInputValue('eyebrow').trim(),
         fallbackTitle: fields.getTextInputValue('fallbackTitle').trim(),
         fallbackDescription: fields.getTextInputValue('fallbackDescription').trim(),
-        imageSrc: fields.getTextInputValue('imageSrc').trim(),
-        imageAlt: fields.getTextInputValue('imageAlt').trim(),
         ctaLabel: fields.getTextInputValue('ctaLabel').trim(),
       };
     case 'about-us:hero':
