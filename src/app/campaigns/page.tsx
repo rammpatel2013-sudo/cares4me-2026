@@ -1,48 +1,106 @@
-export default function CampaignsPage() {
-  const campaigns = [
-    {
-      name: "Student Education Program",
-      description: "$100 = 1 year of full education for a student in India",
-      target: "$75,000",
-      raised: "$50,000",
-      percentage: 67,
-    },
-    {
-      name: "Senior Nutrition Drive",
-      description: "Providing 5,000+ meals to seniors facing hunger and isolation",
-      target: "$50,000",
-      raised: "$40,000",
-      percentage: 80,
-    },
-    {
-      name: "Women's Wellness Initiative",
-      description: "Health education and support for women in underserved communities",
-      target: "$40,000",
-      raised: "$28,000",
-      percentage: 70,
-    },
-    {
-      name: "Youth Health Literacy",
-      description: "Training young people about reproductive and preventive health",
-      target: "$30,000",
-      raised: "$18,000",
-      percentage: 60,
-    },
-    {
-      name: "Hospital Partnerships",
-      description: "Expanding partnerships with 10+ hospitals for community reach",
-      target: "$60,000",
-      raised: "$55,000",
-      percentage: 92,
-    },
-    {
-      name: "Blind School Support",
-      description: "$125 = 1 full day of care for 50+ blind students",
-      target: "$25,000",
-      raised: "$22,000",
-      percentage: 88,
-    },
-  ];
+import { promises as fs } from 'fs';
+import path from 'path';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+type CampaignItem = {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  targetAmount: number;
+  raisedAmount: number;
+  status: 'active' | 'archived';
+  beneficiaries?: string;
+  updatedAt?: string;
+};
+
+type CampaignImpact = {
+  totalRaised: string;
+  averageFunded: string;
+  livesImpacted: string;
+  activeCampaigns: string;
+};
+
+const defaultImpact: CampaignImpact = {
+  totalRaised: '$0',
+  averageFunded: '0%',
+  livesImpacted: '0',
+  activeCampaigns: '0',
+};
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
+function computePercentage(raised: number, target: number) {
+  if (!target || target <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((raised / target) * 100)));
+}
+
+async function loadCampaigns(): Promise<CampaignItem[]> {
+  const campaignsDir = path.join(process.cwd(), 'public', 'campaigns');
+
+  try {
+    await fs.mkdir(campaignsDir, { recursive: true });
+    const files = await fs.readdir(campaignsDir);
+    const jsonFiles = files.filter((file) => file.endsWith('.json') && !file.startsWith('_'));
+
+    const campaigns: CampaignItem[] = [];
+
+    for (const file of jsonFiles) {
+      try {
+        const raw = await fs.readFile(path.join(campaignsDir, file), 'utf8');
+        const data = JSON.parse(raw);
+
+        campaigns.push({
+          id: data.id,
+          slug: data.slug,
+          title: data.title,
+          description: data.description,
+          targetAmount: Number(data.targetAmount) || 0,
+          raisedAmount: Number(data.raisedAmount) || 0,
+          status: data.status === 'archived' ? 'archived' : 'active',
+          beneficiaries: data.beneficiaries || '',
+          updatedAt: data.updatedAt || data.createdAt,
+        });
+      } catch {}
+    }
+
+    return campaigns
+      .filter((item) => item.status === 'active')
+      .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+  } catch {
+    return [];
+  }
+}
+
+async function loadImpact(): Promise<CampaignImpact> {
+  const impactFile = path.join(process.cwd(), 'public', 'campaigns', '_impact.json');
+
+  try {
+    const raw = await fs.readFile(impactFile, 'utf8');
+    const data = JSON.parse(raw);
+
+    return {
+      totalRaised: data.totalRaised || defaultImpact.totalRaised,
+      averageFunded: data.averageFunded || defaultImpact.averageFunded,
+      livesImpacted: data.livesImpacted || defaultImpact.livesImpacted,
+      activeCampaigns: data.activeCampaigns || defaultImpact.activeCampaigns,
+    };
+  } catch {
+    return defaultImpact;
+  }
+}
+
+export default async function CampaignsPage() {
+  const campaigns = await loadCampaigns();
+  const impact = await loadImpact();
 
   return (
     <main className="bg-white">
@@ -59,35 +117,50 @@ export default function CampaignsPage() {
       {/* Campaigns Grid */}
       <section className="py-16 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {campaigns.map((campaign, idx) => (
-              <div key={idx} className="bg-[#F5F5F5] rounded-xl p-6 hover:shadow-lg transition">
-                <h3 className="text-xl font-bold text-[#1E5A96] mb-2">{campaign.name}</h3>
-                <p className="text-gray-700 text-sm mb-4">{campaign.description}</p>
-                
-                <div className="mb-4">
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-bold text-gray-900">Progress</span>
-                    <span className="text-sm text-gray-600">{campaign.raised} of {campaign.target}</span>
+          {campaigns.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+              <h3 className="text-2xl font-black text-[#1E5A96]">No Active Campaigns Yet</h3>
+              <p className="mt-2 text-slate-600">Create campaigns from Discord using the campaign commands.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {campaigns.map((campaign) => {
+                const percentage = computePercentage(campaign.raisedAmount, campaign.targetAmount);
+
+                return (
+                  <div key={campaign.id} className="bg-[#F5F5F5] rounded-xl p-6 hover:shadow-lg transition">
+                    <h3 className="text-xl font-bold text-[#1E5A96] mb-2">{campaign.title}</h3>
+                    <p className="text-gray-700 text-sm mb-4">{campaign.description}</p>
+
+                    {!!campaign.beneficiaries && (
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#2BA5D7]">Impact: {campaign.beneficiaries}</p>
+                    )}
+
+                    <div className="mb-4">
+                      <div className="flex justify-between mb-2">
+                        <span className="text-sm font-bold text-gray-900">Progress</span>
+                        <span className="text-sm text-gray-600">{formatCurrency(campaign.raisedAmount)} of {formatCurrency(campaign.targetAmount)}</span>
+                      </div>
+                      <div className="w-full bg-gray-300 rounded-full h-2">
+                        <div
+                          className="bg-[#7CB342] h-2 rounded-full"
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1">{percentage}% funded</p>
+                    </div>
+
+                    <a
+                      href="/donate"
+                      className="w-full block text-center bg-[#2BA5D7] text-white py-2 rounded-lg font-bold text-sm hover:bg-[#1E5A96] transition"
+                    >
+                      Support This Campaign
+                    </a>
                   </div>
-                  <div className="w-full bg-gray-300 rounded-full h-2">
-                    <div
-                      className="bg-[#7CB342] h-2 rounded-full"
-                      style={{ width: `${campaign.percentage}%` }}
-                    ></div>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-1">{campaign.percentage}% funded</p>
-                </div>
-                
-                <a
-                  href="/donate"
-                  className="w-full block text-center bg-[#2BA5D7] text-white py-2 rounded-lg font-bold text-sm hover:bg-[#1E5A96] transition"
-                >
-                  Support This Campaign
-                </a>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -97,19 +170,19 @@ export default function CampaignsPage() {
           <h2 className="text-4xl font-black text-center mb-12">Campaign Impact</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="text-center">
-              <div className="text-3xl font-black text-[#7CB342] mb-2">$213K</div>
+              <div className="text-3xl font-black text-[#7CB342] mb-2">{impact.totalRaised}</div>
               <p className="text-gray-100">Total Raised</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-black text-[#7CB342] mb-2">75%</div>
+              <div className="text-3xl font-black text-[#7CB342] mb-2">{impact.averageFunded}</div>
               <p className="text-gray-100">Average Funded</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-black text-[#7CB342] mb-2">1000+</div>
+              <div className="text-3xl font-black text-[#7CB342] mb-2">{impact.livesImpacted}</div>
               <p className="text-gray-100">Lives Impacted</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-black text-[#7CB342] mb-2">6</div>
+              <div className="text-3xl font-black text-[#7CB342] mb-2">{impact.activeCampaigns}</div>
               <p className="text-gray-100">Active Campaigns</p>
             </div>
           </div>

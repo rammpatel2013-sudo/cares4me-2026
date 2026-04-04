@@ -33,6 +33,8 @@ const PUBLIC_MEDIA_DIR = path.join(BASE_DIR, 'public', 'uploads');
 const METADATA_DIR = path.join(BASE_DIR, 'public', 'media-metadata');
 const BLOG_DIR = path.join(BASE_DIR, 'public', 'blog-posts');
 const BLOG_IMAGES_DIR = path.join(BASE_DIR, 'public', 'blog-images');
+const CAMPAIGNS_DIR = path.join(BASE_DIR, 'public', 'campaigns');
+const CAMPAIGNS_IMPACT_FILE = path.join(CAMPAIGNS_DIR, '_impact.json');
 const DEFAULT_BLOG_AUTHOR = process.env.DEFAULT_BLOG_AUTHOR || 'Darsh Gajera';
 const MAX_BLOG_IMAGES = 6;
 
@@ -71,6 +73,7 @@ const client = new Client({
 
 const uploadSessions = new Map();
 const blogSessions = new Map();
+const campaignSessions = new Map();
 
 function getFallbackLogoPath() {
   for (const logoPath of BLOG_LOGO_CANDIDATES) {
@@ -466,6 +469,118 @@ async function saveBlogPost(blogData) {
   return post;
 }
 
+function toSlug(value = '') {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60);
+}
+
+function toNumberAmount(value = '') {
+  const numeric = String(value).replace(/[^0-9.]/g, '');
+  const parsed = Number(numeric);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function ensureCampaignStorage() {
+  await mkdir(CAMPAIGNS_DIR, { recursive: true });
+}
+
+async function listCampaigns() {
+  await ensureCampaignStorage();
+  const files = await readdir(CAMPAIGNS_DIR);
+  const jsonFiles = files.filter((f) => f.endsWith('.json') && !f.startsWith('_'));
+  const campaigns = [];
+
+  for (const file of jsonFiles) {
+    try {
+      const raw = await readFile(path.join(CAMPAIGNS_DIR, file), 'utf8');
+      const data = JSON.parse(raw);
+      campaigns.push({ ...data, _file: file });
+    } catch {}
+  }
+
+  return campaigns.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+}
+
+async function saveCampaign(campaignData, existingFile = null) {
+  await ensureCampaignStorage();
+
+  const now = new Date().toISOString();
+  const id = campaignData.id || Date.now();
+  const slug = toSlug(campaignData.title || `campaign-${id}`);
+  const filename = existingFile || `${id}-${slug}.json`;
+
+  const payload = {
+    id,
+    slug,
+    title: campaignData.title,
+    description: campaignData.description,
+    targetAmount: toNumberAmount(campaignData.targetAmount),
+    raisedAmount: toNumberAmount(campaignData.raisedAmount),
+    beneficiaries: campaignData.beneficiaries || '',
+    status: campaignData.status === 'archived' ? 'archived' : 'active',
+    createdAt: campaignData.createdAt || now,
+    updatedAt: now,
+  };
+
+  await writeFile(path.join(CAMPAIGNS_DIR, filename), JSON.stringify(payload, null, 2));
+  return { ...payload, _file: filename };
+}
+
+async function deleteCampaign(fileName) {
+  await unlink(path.join(CAMPAIGNS_DIR, fileName));
+}
+
+async function clearAllCampaigns() {
+  await ensureCampaignStorage();
+  const files = await readdir(CAMPAIGNS_DIR);
+  const campaignFiles = files.filter((f) => f.endsWith('.json') && !f.startsWith('_'));
+
+  for (const file of campaignFiles) {
+    await unlink(path.join(CAMPAIGNS_DIR, file)).catch(() => {});
+  }
+
+  return campaignFiles.length;
+}
+
+async function getCampaignImpact() {
+  await ensureCampaignStorage();
+  try {
+    const raw = await readFile(CAMPAIGNS_IMPACT_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    return {
+      totalRaised: data.totalRaised || '$0',
+      averageFunded: data.averageFunded || '0%',
+      livesImpacted: data.livesImpacted || '0',
+      activeCampaigns: data.activeCampaigns || '0',
+      updatedAt: data.updatedAt || null,
+    };
+  } catch {
+    return {
+      totalRaised: '$0',
+      averageFunded: '0%',
+      livesImpacted: '0',
+      activeCampaigns: '0',
+      updatedAt: null,
+    };
+  }
+}
+
+async function saveCampaignImpact(impact) {
+  await ensureCampaignStorage();
+  const payload = {
+    totalRaised: impact.totalRaised || '$0',
+    averageFunded: impact.averageFunded || '0%',
+    livesImpacted: impact.livesImpacted || '0',
+    activeCampaigns: impact.activeCampaigns || '0',
+    updatedAt: new Date().toISOString(),
+  };
+  await writeFile(CAMPAIGNS_IMPACT_FILE, JSON.stringify(payload, null, 2));
+  return payload;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // BOT READY
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -490,6 +605,7 @@ client.once(Events.ClientReady, async () => {
     await mkdir(METADATA_DIR, { recursive: true });
     await mkdir(BLOG_DIR, { recursive: true });
     await mkdir(BLOG_IMAGES_DIR, { recursive: true });
+    await mkdir(CAMPAIGNS_DIR, { recursive: true });
     console.log('✅ Directories verified');
   } catch (err) {
     console.error('❌ Directory creation failed:', err.message);
@@ -525,7 +641,14 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '📝 BLOG MANAGEMENT', value: '─────────────────────────────', inline: false },
         { name: '!blogs', value: 'List all published blog posts', inline: true },
         { name: '!edit [number]', value: 'Edit a published blog post', inline: true },
-        { name: '!delete-blog [number]', value: 'Delete a published blog post', inline: true }
+        { name: '!delete-blog [number]', value: 'Delete a published blog post', inline: true },
+        { name: '🎯 CAMPAIGNS', value: '─────────────────────────────', inline: false },
+        { name: '!campaign-new', value: 'Create a campaign with approval', inline: true },
+        { name: '!campaigns', value: 'List all campaigns', inline: true },
+        { name: '!campaign-edit [number]', value: 'Edit details and set active/archived', inline: true },
+        { name: '!campaign-delete [number]', value: 'Delete campaign with confirm', inline: true },
+        { name: '!campaign-clear-all', value: 'Delete all campaigns with confirm', inline: true },
+        { name: '!campaign-impact', value: 'Update impact numbers manually', inline: true }
       )
       .setFooter({ text: 'Made for Care4ME' });
     await message.reply({ embeds: [embed] });
@@ -776,6 +899,221 @@ client.on(Events.MessageCreate, async (message) => {
       .setFooter({ text: 'Step 1 of 3: Choose a category' });
 
     await message.reply({ embeds: [embed], components: [categoryRow] });
+    return;
+  }
+
+  // !campaign-new and !campaign
+  if (command === 'campaign-new' || command === 'campaign') {
+    const sessionId = Date.now();
+    campaignSessions.set(sessionId, {
+      mode: 'create',
+      userId: message.author.id,
+      userName: message.author.username,
+    });
+
+    const openRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`campaign_create_open_${sessionId}`)
+        .setLabel('📝 Open Campaign Form')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`campaign_create_cancel_${sessionId}`)
+        .setLabel('❌ Cancel')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const embed = new EmbedBuilder()
+      .setColor(0x2BA5D7)
+      .setTitle('🎯 New Campaign')
+      .setDescription('Open the form to enter campaign details. You will get a preview before publish.')
+      .setFooter({ text: 'Approval required before going live' });
+
+    await message.reply({ embeds: [embed], components: [openRow] });
+    return;
+  }
+
+  // !campaigns
+  if (command === 'campaigns') {
+    try {
+      const campaigns = await listCampaigns();
+      if (campaigns.length === 0) {
+        await message.reply('📭 No campaigns yet. Use !campaign-new to create one.');
+        return;
+      }
+
+      global.campaignList = campaigns;
+
+      const lines = campaigns.slice(0, 20).map((item, idx) => {
+        const status = item.status === 'archived' ? 'Archived' : 'Active';
+        return `**${idx + 1}.** ${item.title}\n   💰 ${item.raisedAmount || 0} / ${item.targetAmount || 0} | ${status}`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle(`🎯 Campaigns (${campaigns.length})`)
+        .setDescription(lines.join('\n') || 'No campaigns')
+        .setFooter({ text: '!campaign-edit [number] | !campaign-delete [number] | !campaign-impact' });
+
+      await message.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error('Campaign list error:', error);
+      await message.reply('❌ Error listing campaigns');
+    }
+    return;
+  }
+
+  // !campaign-edit [number]
+  if (command === 'campaign-edit') {
+    const num = parseInt(args[1], 10);
+    if (!num) {
+      await message.reply('❓ Usage: !campaign-edit 1 (Run !campaigns first)');
+      return;
+    }
+
+    const campaigns = await listCampaigns();
+    if (!campaigns[num - 1]) {
+      await message.reply('❌ Campaign not found. Run !campaigns first.');
+      return;
+    }
+
+    const campaign = campaigns[num - 1];
+    const sessionId = Date.now();
+    campaignSessions.set(sessionId, {
+      mode: 'edit',
+      userId: message.author.id,
+      userName: message.author.username,
+      campaign,
+    });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`campaign_edit_open_${sessionId}`)
+        .setLabel('✏️ Open Edit Form')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`campaign_edit_cancel_${sessionId}`)
+        .setLabel('❌ Cancel')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const embed = new EmbedBuilder()
+      .setColor(0x2BA5D7)
+      .setTitle(`✏️ Edit Campaign #${num}`)
+      .setDescription(campaign.title)
+      .setFooter({ text: 'Changes require approval before save' });
+
+    await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
+  // !campaign-delete [number]
+  if (command === 'campaign-delete') {
+    const num = parseInt(args[1], 10);
+    if (!num) {
+      await message.reply('❓ Usage: !campaign-delete 1 (Run !campaigns first)');
+      return;
+    }
+
+    const campaigns = await listCampaigns();
+    if (!campaigns[num - 1]) {
+      await message.reply('❌ Campaign not found. Run !campaigns first.');
+      return;
+    }
+
+    const campaign = campaigns[num - 1];
+    const sessionId = Date.now();
+    campaignSessions.set(sessionId, {
+      mode: 'delete',
+      userId: message.author.id,
+      userName: message.author.username,
+      campaign,
+    });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`campaign_delete_confirm_${sessionId}`)
+        .setLabel('⚠️ Confirm Delete')
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`campaign_delete_cancel_${sessionId}`)
+        .setLabel('❌ Cancel')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('⚠️ Delete Campaign?')
+      .setDescription(`This will delete: ${campaign.title}`)
+      .setFooter({ text: 'This cannot be undone' });
+
+    await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
+  // !campaign-clear-all
+  if (command === 'campaign-clear-all') {
+    const sessionId = Date.now();
+    campaignSessions.set(sessionId, {
+      mode: 'clear-all',
+      userId: message.author.id,
+      userName: message.author.username,
+    });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`campaign_clear_confirm_${sessionId}`)
+        .setLabel('⚠️ Delete All Campaigns')
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`campaign_clear_cancel_${sessionId}`)
+        .setLabel('❌ Cancel')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const embed = new EmbedBuilder()
+      .setColor(0xFF0000)
+      .setTitle('⚠️ Clear All Campaigns?')
+      .setDescription('This will remove all campaign cards from the website.')
+      .setFooter({ text: 'Approval required' });
+
+    await message.reply({ embeds: [embed], components: [row] });
+    return;
+  }
+
+  // !campaign-impact
+  if (command === 'campaign-impact') {
+    const currentImpact = await getCampaignImpact();
+    const sessionId = Date.now();
+    campaignSessions.set(sessionId, {
+      mode: 'impact',
+      userId: message.author.id,
+      userName: message.author.username,
+      impact: currentImpact,
+    });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`campaign_impact_open_${sessionId}`)
+        .setLabel('📊 Open Impact Form')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`campaign_impact_cancel_${sessionId}`)
+        .setLabel('❌ Cancel')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const embed = new EmbedBuilder()
+      .setColor(0x2BA5D7)
+      .setTitle('📊 Update Campaign Impact (Manual)')
+      .addFields(
+        { name: 'Total Raised', value: currentImpact.totalRaised, inline: true },
+        { name: 'Average Funded', value: currentImpact.averageFunded, inline: true },
+        { name: 'Lives Impacted', value: currentImpact.livesImpacted, inline: true },
+        { name: 'Active Campaigns', value: currentImpact.activeCampaigns, inline: true }
+      )
+      .setFooter({ text: 'These numbers are manual and shown on /campaigns' });
+
+    await message.reply({ embeds: [embed], components: [row] });
     return;
   }
 
@@ -1626,6 +1964,370 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setDescription('The blog post was not published.');
 
       await safeReply(interaction, { embeds: [embed], components: [] });
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // CAMPAIGN CREATE OPEN
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_create_open_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+
+      if (!session) return await safeReply(interaction, '❌ Session expired.');
+      if (session.userId !== interaction.user.id) return await safeReply(interaction, '❌ Only the creator can continue this action.');
+
+      const modal = new ModalBuilder()
+        .setCustomId(`campaign_create_modal_${sessionId}`)
+        .setTitle('Create Campaign')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('campaign_title')
+              .setLabel('Campaign title')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+              .setMaxLength(120)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('campaign_description')
+              .setLabel('Description')
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+              .setMaxLength(800)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('campaign_target')
+              .setLabel('Target amount (number)')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('75000')
+              .setRequired(true)
+              .setMaxLength(20)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('campaign_raised')
+              .setLabel('Raised amount (number)')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder('12000')
+              .setRequired(true)
+              .setMaxLength(20)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('campaign_beneficiaries')
+              .setLabel('Beneficiaries or impact (optional)')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(false)
+              .setMaxLength(120)
+          )
+        );
+
+      return await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('campaign_create_modal_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session) return await safeReply(interaction, '❌ Session expired.');
+
+      const draft = {
+        title: interaction.fields.getTextInputValue('campaign_title').trim(),
+        description: interaction.fields.getTextInputValue('campaign_description').trim(),
+        targetAmount: interaction.fields.getTextInputValue('campaign_target').trim(),
+        raisedAmount: interaction.fields.getTextInputValue('campaign_raised').trim(),
+        beneficiaries: (interaction.fields.getTextInputValue('campaign_beneficiaries') || '').trim(),
+        status: 'active',
+      };
+
+      session.draft = draft;
+
+      const target = toNumberAmount(draft.targetAmount);
+      const raised = toNumberAmount(draft.raisedAmount);
+      const percentage = target > 0 ? Math.round((raised / target) * 100) : 0;
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`campaign_create_save_${sessionId}`).setLabel('✅ Publish Campaign').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`campaign_create_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+      );
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle('Preview: New Campaign')
+        .addFields(
+          { name: 'Title', value: draft.title, inline: false },
+          { name: 'Description', value: draft.description, inline: false },
+          { name: 'Progress', value: `${raised} of ${target} (${percentage}%)`, inline: true },
+          { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true }
+        )
+        .setFooter({ text: 'Approve to publish to website' });
+
+      return await safeReply(interaction, { embeds: [embed], components: [row] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_create_save_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.draft) return await safeReply(interaction, '❌ Session expired.');
+
+      await safeDeferReply(interaction);
+      try {
+        const saved = await saveCampaign(session.draft);
+        campaignSessions.delete(sessionId);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Campaign Published')
+          .addFields(
+            { name: 'Title', value: saved.title, inline: false },
+            { name: 'Status', value: saved.status, inline: true }
+          );
+
+        return await interaction.editReply({ embeds: [embed], components: [] });
+      } catch (error) {
+        return await interaction.editReply({ content: `❌ Failed to save campaign: ${error.message}`, embeds: [], components: [] });
+      }
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_create_cancel_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      campaignSessions.delete(sessionId);
+      return await safeReply(interaction, '❌ Campaign creation cancelled.');
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // CAMPAIGN EDIT OPEN
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_edit_open_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.campaign) return await safeReply(interaction, '❌ Session expired.');
+      if (session.userId !== interaction.user.id) return await safeReply(interaction, '❌ Only the creator can continue this action.');
+
+      const item = session.campaign;
+      const modal = new ModalBuilder()
+        .setCustomId(`campaign_edit_modal_${sessionId}`)
+        .setTitle('Edit Campaign')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('campaign_title').setLabel('Campaign title').setStyle(TextInputStyle.Short).setValue(item.title || '').setRequired(true).setMaxLength(120)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('campaign_description').setLabel('Description').setStyle(TextInputStyle.Paragraph).setValue(item.description || '').setRequired(true).setMaxLength(800)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('campaign_target').setLabel('Target amount (number)').setStyle(TextInputStyle.Short).setValue(String(item.targetAmount || 0)).setRequired(true).setMaxLength(20)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('campaign_raised').setLabel('Raised amount (number)').setStyle(TextInputStyle.Short).setValue(String(item.raisedAmount || 0)).setRequired(true).setMaxLength(20)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('campaign_beneficiaries').setLabel('Beneficiaries or impact (optional)').setStyle(TextInputStyle.Short).setValue(item.beneficiaries || '').setRequired(false).setMaxLength(120)
+          )
+        );
+
+      return await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('campaign_edit_modal_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.campaign) return await safeReply(interaction, '❌ Session expired.');
+
+      const draft = {
+        ...session.campaign,
+        title: interaction.fields.getTextInputValue('campaign_title').trim(),
+        description: interaction.fields.getTextInputValue('campaign_description').trim(),
+        targetAmount: interaction.fields.getTextInputValue('campaign_target').trim(),
+        raisedAmount: interaction.fields.getTextInputValue('campaign_raised').trim(),
+        beneficiaries: (interaction.fields.getTextInputValue('campaign_beneficiaries') || '').trim(),
+        status: session.campaign.status || 'active',
+      };
+
+      session.draft = draft;
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`campaign_edit_save_active_${sessionId}`).setLabel('✅ Save as Active').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`campaign_edit_save_archived_${sessionId}`).setLabel('📦 Save as Archived').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`campaign_edit_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+      );
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle('Preview: Campaign Update')
+        .addFields(
+          { name: 'Title', value: draft.title, inline: false },
+          { name: 'Description', value: draft.description, inline: false },
+          { name: 'Progress', value: `${toNumberAmount(draft.raisedAmount)} of ${toNumberAmount(draft.targetAmount)}`, inline: true },
+          { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true },
+          { name: 'Current Status', value: (session.campaign.status || 'active') === 'archived' ? 'Archived' : 'Active', inline: true }
+        );
+
+      return await safeReply(interaction, { embeds: [embed], components: [row] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_edit_save_')) {
+      const parts = interaction.customId.split('_');
+      const statusToken = parts[3];
+      const sessionId = parseInt(parts[4], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.draft || !session.campaign) return await safeReply(interaction, '❌ Session expired.');
+
+      const nextStatus = statusToken === 'archived' ? 'archived' : 'active';
+
+      await safeDeferReply(interaction);
+      try {
+        const saved = await saveCampaign({
+          ...session.draft,
+          id: session.campaign.id,
+          slug: session.campaign.slug,
+          createdAt: session.campaign.createdAt,
+          status: nextStatus,
+        }, session.campaign._file);
+
+        campaignSessions.delete(sessionId);
+        const embed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Campaign Updated')
+          .addFields(
+            { name: 'Title', value: saved.title, inline: false },
+            { name: 'Status', value: saved.status === 'archived' ? 'Archived (hidden from page)' : 'Active (visible on page)', inline: false }
+          );
+        return await interaction.editReply({ embeds: [embed], components: [] });
+      } catch (error) {
+        return await interaction.editReply({ content: `❌ Failed to update campaign: ${error.message}`, embeds: [], components: [] });
+      }
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_edit_cancel_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      campaignSessions.delete(sessionId);
+      return await safeReply(interaction, '❌ Campaign edit cancelled.');
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // CAMPAIGN DELETE / CLEAR ALL
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_delete_confirm_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.campaign) return await safeReply(interaction, '❌ Session expired.');
+
+      await safeDeferReply(interaction);
+      await deleteCampaign(session.campaign._file).catch(() => {});
+      campaignSessions.delete(sessionId);
+      return await interaction.editReply({ content: `✅ Deleted campaign: ${session.campaign.title}`, embeds: [], components: [] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_delete_cancel_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      campaignSessions.delete(sessionId);
+      return await safeReply(interaction, '❌ Campaign deletion cancelled.');
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_clear_confirm_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session) return await safeReply(interaction, '❌ Session expired.');
+
+      await safeDeferReply(interaction);
+      const removed = await clearAllCampaigns();
+      campaignSessions.delete(sessionId);
+      return await interaction.editReply({ content: `✅ Removed ${removed} campaign(s).`, embeds: [], components: [] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_clear_cancel_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      campaignSessions.delete(sessionId);
+      return await safeReply(interaction, '❌ Clear-all cancelled.');
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // CAMPAIGN IMPACT (MANUAL)
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_impact_open_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.impact) return await safeReply(interaction, '❌ Session expired.');
+
+      const modal = new ModalBuilder()
+        .setCustomId(`campaign_impact_modal_${sessionId}`)
+        .setTitle('Update Impact Numbers')
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('impact_total_raised').setLabel('Total Raised').setStyle(TextInputStyle.Short).setValue(session.impact.totalRaised || '$0').setRequired(true).setMaxLength(20)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('impact_avg_funded').setLabel('Average Funded').setStyle(TextInputStyle.Short).setValue(session.impact.averageFunded || '0%').setRequired(true).setMaxLength(10)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('impact_lives').setLabel('Lives Impacted').setStyle(TextInputStyle.Short).setValue(session.impact.livesImpacted || '0').setRequired(true).setMaxLength(20)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('impact_active').setLabel('Active Campaigns').setStyle(TextInputStyle.Short).setValue(session.impact.activeCampaigns || '0').setRequired(true).setMaxLength(10)
+          )
+        );
+
+      return await interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('campaign_impact_modal_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session) return await safeReply(interaction, '❌ Session expired.');
+
+      session.impactDraft = {
+        totalRaised: interaction.fields.getTextInputValue('impact_total_raised').trim(),
+        averageFunded: interaction.fields.getTextInputValue('impact_avg_funded').trim(),
+        livesImpacted: interaction.fields.getTextInputValue('impact_lives').trim(),
+        activeCampaigns: interaction.fields.getTextInputValue('impact_active').trim(),
+      };
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`campaign_impact_save_${sessionId}`).setLabel('✅ Save Impact').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`campaign_impact_cancel_${sessionId}`).setLabel('❌ Cancel').setStyle(ButtonStyle.Secondary)
+      );
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle('Preview: Impact Numbers')
+        .addFields(
+          { name: 'Total Raised', value: session.impactDraft.totalRaised, inline: true },
+          { name: 'Average Funded', value: session.impactDraft.averageFunded, inline: true },
+          { name: 'Lives Impacted', value: session.impactDraft.livesImpacted, inline: true },
+          { name: 'Active Campaigns', value: session.impactDraft.activeCampaigns, inline: true }
+        );
+
+      return await safeReply(interaction, { embeds: [embed], components: [row] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_impact_save_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = campaignSessions.get(sessionId);
+      if (!session || !session.impactDraft) return await safeReply(interaction, '❌ Session expired.');
+
+      await safeDeferReply(interaction);
+      const saved = await saveCampaignImpact(session.impactDraft);
+      campaignSessions.delete(sessionId);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x7CB342)
+        .setTitle('✅ Impact Numbers Updated')
+        .addFields(
+          { name: 'Total Raised', value: saved.totalRaised, inline: true },
+          { name: 'Average Funded', value: saved.averageFunded, inline: true },
+          { name: 'Lives Impacted', value: saved.livesImpacted, inline: true },
+          { name: 'Active Campaigns', value: saved.activeCampaigns, inline: true }
+        );
+
+      return await interaction.editReply({ embeds: [embed], components: [] });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('campaign_impact_cancel_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      campaignSessions.delete(sessionId);
+      return await safeReply(interaction, '❌ Impact update cancelled.');
     }
 
     // ───────────────────────────────────────────────────────────────────────────────
