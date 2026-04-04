@@ -12,6 +12,7 @@ const {
   TextInputBuilder,
   TextInputStyle,
   EmbedBuilder,
+  AttachmentBuilder,
   MessageFlags
 } = require('discord.js');
 const { createWriteStream, existsSync } = require('fs');
@@ -408,7 +409,13 @@ async function saveBlogPost(blogData) {
   let imageType = null;
   const inlineImages = [];
 
-  if (Array.isArray(blogData.userImages) && blogData.userImages.length > 0) {
+  // Use pre-selected image (e.g., approved AI preview) when provided.
+  if (blogData.preselectedImage) {
+    imageFilename = blogData.preselectedImage;
+    imageType = blogData.preselectedImageType || 'ai';
+  }
+
+  if (!imageFilename && Array.isArray(blogData.userImages) && blogData.userImages.length > 0) {
     imageFilename = blogData.userImages[0];
     imageType = 'upload';
     inlineImages.push(...blogData.userImages.slice(1));
@@ -1360,13 +1367,59 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.editReply({ embeds: [genEmbed], components: [] });
 
       try {
+        // If no upload exists, generate and preview AI image first for approval.
+        if (!session.userImage && !session.generatedImageForApproval) {
+          const aiImageFilename = await generateBlogImage(session.generatedTitle, session.category);
+
+          if (!aiImageFilename) {
+            throw new Error('Could not generate an AI image. Please try Publish again.');
+          }
+
+          session.generatedImageForApproval = aiImageFilename;
+
+          const previewRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`blog_useimg_${timestamp}`)
+              .setLabel('✅ Use This Image')
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId(`blog_regenimg_${timestamp}`)
+              .setLabel('🔄 Regenerate Image')
+              .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+              .setCustomId(`blog_cancel_${timestamp}`)
+              .setLabel('❌ Cancel')
+              .setStyle(ButtonStyle.Danger)
+          );
+
+          const localPath = path.join(BLOG_IMAGES_DIR, aiImageFilename);
+          const imageAttachment = new AttachmentBuilder(localPath, { name: aiImageFilename });
+
+          const previewEmbed = new EmbedBuilder()
+            .setColor(0x2BA5D7)
+            .setTitle('🖼️ AI Hero Image Preview')
+            .setDescription('Review this generated image before publishing the blog post.')
+            .addFields(
+              { name: '📝 Title', value: session.generatedTitle || 'Untitled', inline: false },
+              { name: '📁 Category', value: session.category || 'general', inline: true },
+              { name: 'Next Step', value: 'Click **Use This Image** to publish, or **Regenerate Image** to try another one.', inline: false }
+            )
+            .setImage(`attachment://${aiImageFilename}`)
+            .setFooter({ text: 'AI preview required before publish' });
+
+          await interaction.editReply({ embeds: [previewEmbed], components: [previewRow], files: [imageAttachment] });
+          return;
+        }
+
         const savedPost = await saveBlogPost({
           title: session.generatedTitle,
           content: session.generatedContent,
           category: session.category,
           author: session.authorName || DEFAULT_BLOG_AUTHOR,
           userImages: session.userImages,
-          userImage: session.userImage
+          userImage: session.userImage,
+          preselectedImage: session.generatedImageForApproval,
+          preselectedImageType: session.generatedImageForApproval ? 'ai' : undefined
         });
 
         console.log('\n✅ BLOG PUBLISHED:', savedPost.title);
@@ -1396,6 +1449,125 @@ client.on(Events.InteractionCreate, async (interaction) => {
           .setTitle('❌ Publish Failed')
           .setDescription(`Error: ${error.message}`);
         await interaction.editReply({ embeds: [errorEmbed], components: [] });
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // BLOG IMAGE APPROVAL BUTTON
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_useimg_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      if (!session.generatedImageForApproval) {
+        return await safeReply(interaction, '❌ No AI image is ready yet. Press Publish again to generate one.');
+      }
+
+      await safeDeferReply(interaction);
+
+      try {
+        const savedPost = await saveBlogPost({
+          title: session.generatedTitle,
+          content: session.generatedContent,
+          category: session.category,
+          author: session.authorName || DEFAULT_BLOG_AUTHOR,
+          userImages: session.userImages,
+          userImage: session.userImage,
+          preselectedImage: session.generatedImageForApproval,
+          preselectedImageType: 'ai'
+        });
+
+        console.log('\n✅ BLOG PUBLISHED:', savedPost.title);
+        console.log(`   → Category: ${savedPost.category}`);
+        console.log(`   → Author: ${savedPost.author}`);
+        console.log(`   → Image: ${savedPost.image || 'none'} (${savedPost.imageType || 'none'})`);
+
+        const successEmbed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Blog Post Published!')
+          .addFields(
+            { name: '📝 Title', value: savedPost.title, inline: false },
+            { name: '📁 Category', value: savedPost.category, inline: true },
+            { name: '✍️ Author', value: savedPost.author, inline: true },
+            { name: '🖼️ Image', value: savedPost.image ? `✅ ${savedPost.imageType === 'ai' ? 'AI Generated' : 'Your Upload'}` : '❌ None', inline: true }
+          )
+          .setFooter({ text: 'Blog post will appear on website immediately!' });
+
+        await interaction.editReply({ embeds: [successEmbed], components: [], files: [] });
+        blogSessions.delete(timestamp);
+      } catch (error) {
+        console.error('Blog publish error:', error);
+        const errorEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('❌ Publish Failed')
+          .setDescription(`Error: ${error.message}`);
+        await interaction.editReply({ embeds: [errorEmbed], components: [], files: [] });
+      }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────────
+    // BLOG IMAGE REGENERATE BUTTON
+    // ───────────────────────────────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('blog_regenimg_')) {
+      const timestamp = parseInt(interaction.customId.split('_')[2]);
+      const session = blogSessions.get(timestamp);
+
+      if (!session) {
+        return await safeReply(interaction, '❌ Session expired.');
+      }
+
+      await safeDeferReply(interaction);
+
+      try {
+        const aiImageFilename = await generateBlogImage(session.generatedTitle, session.category);
+        if (!aiImageFilename) {
+          throw new Error('Could not regenerate AI image. Please try again.');
+        }
+
+        session.generatedImageForApproval = aiImageFilename;
+
+        const previewRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`blog_useimg_${timestamp}`)
+            .setLabel('✅ Use This Image')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`blog_regenimg_${timestamp}`)
+            .setLabel('🔄 Regenerate Image')
+            .setStyle(ButtonStyle.Primary),
+          new ButtonBuilder()
+            .setCustomId(`blog_cancel_${timestamp}`)
+            .setLabel('❌ Cancel')
+            .setStyle(ButtonStyle.Danger)
+        );
+
+        const localPath = path.join(BLOG_IMAGES_DIR, aiImageFilename);
+        const imageAttachment = new AttachmentBuilder(localPath, { name: aiImageFilename });
+
+        const previewEmbed = new EmbedBuilder()
+          .setColor(0x2BA5D7)
+          .setTitle('🖼️ AI Hero Image Preview (Regenerated)')
+          .setDescription('Here is a new AI image option for this blog post.')
+          .addFields(
+            { name: '📝 Title', value: session.generatedTitle || 'Untitled', inline: false },
+            { name: '📁 Category', value: session.category || 'general', inline: true },
+            { name: 'Next Step', value: 'Click **Use This Image** to publish, or regenerate again.', inline: false }
+          )
+          .setImage(`attachment://${aiImageFilename}`)
+          .setFooter({ text: 'Review before publish' });
+
+        await interaction.editReply({ embeds: [previewEmbed], components: [previewRow], files: [imageAttachment] });
+      } catch (error) {
+        console.error('Blog regenerate image error:', error);
+        const errorEmbed = new EmbedBuilder()
+          .setColor(0xFF0000)
+          .setTitle('❌ Regeneration Failed')
+          .setDescription(`Error: ${error.message}`);
+        await interaction.editReply({ embeds: [errorEmbed], components: [], files: [] });
       }
     }
 

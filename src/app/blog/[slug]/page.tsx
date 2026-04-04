@@ -280,7 +280,28 @@ export default async function BlogPostPage({
       {heroAsset && (
         <div className="mx-auto mt-8 max-w-6xl px-4 sm:px-6">
           <div className={`relative overflow-hidden rounded-[2rem] border border-slate-200 bg-[linear-gradient(145deg,#f8fafc,#e2f5ef)] p-4 shadow-[0_30px_70px_-35px_rgba(0,0,0,0.7)] sm:p-5 ${heroAsset.orientation === 'portrait' ? 'lg:max-w-4xl' : ''}`}>
-            <img src={heroAsset.src} alt={post.title} className="mx-auto block max-h-[82vh] w-auto max-w-full rounded-[1.5rem] object-contain" />
+            {post.imageType === 'ai' && heroAsset.orientation !== 'portrait' ? (
+              <>
+                <div className="absolute inset-0 overflow-hidden rounded-[1.5rem]">
+                  <img
+                    src={heroAsset.src}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-full w-full scale-110 object-cover opacity-30 blur-2xl"
+                  />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.32)_0%,rgba(255,255,255,0.78)_72%)]" />
+                </div>
+                <div className="relative flex min-h-[42vh] items-center justify-center">
+                  <img
+                    src={heroAsset.src}
+                    alt={post.title}
+                    className="block h-auto max-h-[78vh] w-full rounded-[1.5rem] object-contain"
+                  />
+                </div>
+              </>
+            ) : (
+              <img src={heroAsset.src} alt={post.title} className="mx-auto block max-h-[82vh] w-auto max-w-full rounded-[1.5rem] object-contain" />
+            )}
             {post.imageType === 'ai' && (
               <div className="absolute right-4 top-4 rounded-full bg-black/50 px-3 py-1 text-xs text-white backdrop-blur-sm sm:text-sm">
                 AI Generated
