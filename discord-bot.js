@@ -166,7 +166,11 @@ async function saveBlogAttachments(attachments, maxImages = MAX_BLOG_IMAGES) {
       const filename = `${Date.now()}-${baseName}.webp`;
 
       await sharp(buffer)
-        .resize(1200, 630, { fit: 'cover' })
+        .resize(1200, 630, {
+          fit: 'contain',
+          background: { r: 244, g: 247, b: 250, alpha: 1 },
+          withoutEnlargement: true
+        })
         .webp({ quality: 85 })
         .toFile(path.join(BLOG_IMAGES_DIR, filename));
 
@@ -241,12 +245,14 @@ async function createFallbackBlogImage(title, category, imageFilename) {
   return imageFilename;
 }
 
-async function generateBlogImage(title, category) {
+async function generateBlogImage(title, category, customPrompt = '') {
   const timestamp = Date.now();
   const imageFilename = `${timestamp}-blog.webp`;
   
   // Create prompt for image generation
-  const imagePrompt = `${title}, nonprofit charity organization, professional photography, warm hopeful atmosphere, community care, ${category}`;
+  const imagePrompt = customPrompt && customPrompt.trim().length > 0
+    ? `${customPrompt.trim()}, nonprofit charity organization, warm hopeful atmosphere, community care, ${category}`
+    : `${title}, nonprofit charity organization, professional photography, warm hopeful atmosphere, community care, ${category}`;
   const encodedPrompt = encodeURIComponent(imagePrompt);
   
   // List of image generation services to try (free, no API key needed)
@@ -304,7 +310,11 @@ async function generateBlogImage(title, category) {
       
       // Convert to WebP and save
       await sharp(imageBuffer)
-        .resize(1200, 630, { fit: 'cover' })
+        .resize(1200, 630, {
+          fit: 'contain',
+          background: { r: 244, g: 247, b: 250, alpha: 1 },
+          withoutEnlargement: true
+        })
         .webp({ quality: 85 })
         .toFile(path.join(BLOG_IMAGES_DIR, imageFilename));
       
@@ -428,7 +438,7 @@ async function saveBlogPost(blogData) {
   } else {
     // Generate AI image
     if (!imageFilename) {
-      imageFilename = await generateBlogImage(blogData.title, blogData.category);
+      imageFilename = await generateBlogImage(blogData.title, blogData.category, blogData.imagePrompt || '');
       if (imageFilename) {
         imageType = 'ai';
       }
@@ -1182,6 +1192,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
               .setPlaceholder('- We collected 500 pairs of shoes\n- 50 volunteers participated\n- Distributed to 3 local shelters')
               .setRequired(true)
               .setMaxLength(1000)
+          ),
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId('image_prompt')
+              .setLabel('AI image prompt (optional)')
+              .setStyle(TextInputStyle.Paragraph)
+              .setPlaceholder('Ex: Volunteers packing food boxes in a bright community center, documentary photography, natural light')
+              .setRequired(false)
+              .setMaxLength(500)
           )
         );
 
@@ -1204,7 +1223,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const authorInput = (interaction.fields.getTextInputValue('author_name') || '').trim();
       session.authorName = authorInput || DEFAULT_BLOG_AUTHOR;
       const keyPoints = interaction.fields.getTextInputValue('key_points');
+      const imagePrompt = (interaction.fields.getTextInputValue('image_prompt') || '').trim();
       session.keyPoints = keyPoints;
+      session.imagePrompt = imagePrompt;
 
       // Generate blog post with AI
       const embed = new EmbedBuilder()
@@ -1248,6 +1269,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 ? `📷 ${session.userImages.length} uploaded (${session.userImage ? 'hero ready' : 'pending'})`
                 : '🎨 AI/fallback hero will generate',
               inline: true
+            },
+            {
+              name: '🎨 AI Prompt',
+              value: session.imagePrompt || 'Auto from title/category',
+              inline: false
             },
             { name: '➕ Add More Images', value: `Attach images with \`!blog-images ${timestamp}\` before pressing Publish.`, inline: false }
           )
@@ -1369,7 +1395,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         // If no upload exists, generate and preview AI image first for approval.
         if (!session.userImage && !session.generatedImageForApproval) {
-          const aiImageFilename = await generateBlogImage(session.generatedTitle, session.category);
+          const aiImageFilename = await generateBlogImage(session.generatedTitle, session.category, session.imagePrompt || '');
 
           if (!aiImageFilename) {
             throw new Error('Could not generate an AI image. Please try Publish again.');
@@ -1418,6 +1444,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           author: session.authorName || DEFAULT_BLOG_AUTHOR,
           userImages: session.userImages,
           userImage: session.userImage,
+          imagePrompt: session.imagePrompt,
           preselectedImage: session.generatedImageForApproval,
           preselectedImageType: session.generatedImageForApproval ? 'ai' : undefined
         });
@@ -1477,6 +1504,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           author: session.authorName || DEFAULT_BLOG_AUTHOR,
           userImages: session.userImages,
           userImage: session.userImage,
+          imagePrompt: session.imagePrompt,
           preselectedImage: session.generatedImageForApproval,
           preselectedImageType: 'ai'
         });
@@ -1523,7 +1551,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await safeDeferReply(interaction);
 
       try {
-        const aiImageFilename = await generateBlogImage(session.generatedTitle, session.category);
+        const aiImageFilename = await generateBlogImage(session.generatedTitle, session.category, session.imagePrompt || '');
         if (!aiImageFilename) {
           throw new Error('Could not regenerate AI image. Please try again.');
         }

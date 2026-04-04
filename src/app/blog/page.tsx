@@ -17,6 +17,14 @@ interface BlogPost {
   inlineImages?: string[];
 }
 
+function resolveBlogImageUrl(imageName?: string) {
+  if (!imageName) return null;
+  if (imageName.startsWith('http://') || imageName.startsWith('https://') || imageName.startsWith('/')) {
+    return imageName;
+  }
+  return `/api/image?file=${encodeURIComponent(imageName)}`;
+}
+
 const TILE_SPANS = [
   'md:col-span-2 md:row-span-2',
   'md:col-span-1 md:row-span-1',
@@ -97,7 +105,14 @@ export default function BlogPage() {
             <div className="grid lg:grid-cols-[1.2fr_1fr]">
               <div className="relative h-64 overflow-hidden sm:h-80 lg:h-full">
                 {heroPost.image ? (
-                  <img src={`/blog-images/${heroPost.image}`} alt={heroPost.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                  <img
+                    src={resolveBlogImageUrl(heroPost.image) || undefined}
+                    alt={heroPost.title}
+                    className="h-full w-full object-contain bg-slate-100 transition duration-700 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center bg-gradient-to-br from-emerald-400 to-cyan-500">
                     <span className="text-6xl opacity-60">📝</span>
@@ -129,7 +144,7 @@ export default function BlogPage() {
       <section className="mx-auto max-w-6xl px-4 pt-8 sm:px-6">
         <div className="grid gap-5 md:grid-cols-3 md:auto-rows-[190px]">
           {remainingPosts.map((post, idx) => {
-            const imageSrc = post.image ? `/blog-images/${post.image}` : null;
+            const imageSrc = resolveBlogImageUrl(post.image);
             return (
               <Link
                 href={`/blog/${post.slug}`}
@@ -138,7 +153,14 @@ export default function BlogPage() {
               >
                 <div className="absolute inset-0">
                   {imageSrc ? (
-                    <img src={imageSrc} alt={post.title} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" />
+                    <img
+                      src={imageSrc}
+                      alt={post.title}
+                      className="h-full w-full object-contain bg-slate-100 transition duration-700 group-hover:scale-105"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
                   ) : (
                     <div className="h-full w-full bg-gradient-to-br from-emerald-300 to-cyan-400" />
                   )}

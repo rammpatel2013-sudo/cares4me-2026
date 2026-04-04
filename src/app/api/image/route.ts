@@ -11,10 +11,26 @@ export async function GET(request: NextRequest) {
   }
 
   const safeFilename = path.basename(filename);
-  const filePath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
+  const publicDir = path.join(process.cwd(), 'public');
+  const candidatePaths = [
+    path.join(publicDir, 'blog-images', safeFilename),
+    path.join(publicDir, 'uploads', safeFilename),
+    path.join(publicDir, 'images', safeFilename),
+  ];
   
   try {
-    const fileBuffer = await fs.readFile(filePath);
+    let fileBuffer = null;
+
+    for (const candidatePath of candidatePaths) {
+      try {
+        fileBuffer = await fs.readFile(candidatePath);
+        break;
+      } catch {}
+    }
+
+    if (!fileBuffer) {
+      return new NextResponse('Image not found', { status: 404 });
+    }
     
     const ext = path.extname(safeFilename).toLowerCase();
     const mimeMap: Record<string, string> = {
@@ -29,7 +45,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(fileBuffer, {
       headers: {
         'Content-Type': mimeType,
-        'Cache-Control': 'public, max-age=31536000',
+        'Cache-Control': 'no-store, must-revalidate',
       },
     });
   } catch (error) {
