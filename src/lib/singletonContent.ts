@@ -12,6 +12,7 @@ export type AboutUsContent = typeof import('../../content/pages/about-us.json');
 export type DonateContent = typeof import('../../content/pages/donate.json');
 export type VolunteerContent = typeof import('../../content/pages/volunteer.json');
 export type ContactUsContent = typeof import('../../content/pages/contact-us.json');
+export type FaqPageContent = typeof import('../../content/pages/faq-page.json');
 
 function getContentDirectoryCandidates() {
   const candidates = [
@@ -66,4 +67,8 @@ export async function loadVolunteerContent() {
 
 export async function loadContactUsContent() {
   return readContentFile<ContactUsContent>('contact-us.json');
+}
+
+export async function loadFaqPageContent() {
+  return readContentFile<FaqPageContent>('faq-page.json');
 }

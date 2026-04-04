@@ -31,9 +31,20 @@
 
 ## Completed Singleton Page Rollout
 - **JSON-Driven Singleton Pages**: Home, About Us, Donate, Volunteer, and Contact Us now render from `content/pages/*.json` instead of keeping major page content hardcoded in React files.
+- **FAQ Singleton Added**: FAQ page now renders from `content/pages/faq-page.json` and is editable through the singleton page tooling.
 - **Homepage Featured Campaign Linking**: The homepage can now reference an active campaign by slug and fall back to stored featured campaign values when no linked active campaign is available.
 - **Section-Level Page Editing**: The Discord bot now supports modal-based editing for initial singleton sections including hero, stats, impacts, story, tiers, forms, and contact cards.
+- **Expanded Section Coverage**: Added singleton section editing for Home (`how-it-works`, `cta`), About Us (`values`, `cta`), Donate (`partners`, `trust-badges`, `monthly-giving`), Volunteer (`testimonials`), Contact (`form`), and FAQ (`hero`, `questions`, `cta`, `cta-cards`).
+- **Singleton Validation Layer**: Added pre-save validation for singleton edits (required content, href format checks, numeric sanity for progress values) to reduce malformed saves.
+- **Singleton Versioning + Restore**: Each singleton save now creates a timestamped backup in `content/pages/_history/<pageKey>/` and supports `!page-history` and `!page-restore` flows.
+- **Restore Confirmation Step**: `!page-restore` now requires a confirm button click before any restore write is executed.
 - **Validated Build State**: The singleton CMS rollout passed type-check/build validation after conversion.
+
+## Restore Point Notes (April 4, 2026)
+- **Latest Git Baseline Before New Commit**: `d27da08`
+- **Singleton Snapshot Store Path**: `content/pages/_history/<pageKey>/`
+- **Current Snapshot Status**: No runtime snapshots present yet in repository (first snapshot is created automatically on next singleton save in production).
+- **Operational Restore Commands**: `!page-history [page] [limit]` and `!page-restore [page] [snapshotId|latest]` (with confirm/cancel buttons).
 
 ## Current Pipeline Position
 The project is no longer only at the foundation stage. Current status is:

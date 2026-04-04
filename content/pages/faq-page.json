@@ -1,0 +1,66 @@
+{
+  "hero": {
+    "title": "Frequently Asked Questions",
+    "description": "Everything you need to know about Care4ME. Can't find your answer? Contact us directly!"
+  },
+  "questions": [
+    {
+      "question": "Would I be able to hold an event in your name to raise money for Care4ME?",
+      "answer": "Yes, but not without our permission. You would have to email, text, or call us regarding this. Our contact information can be found on our Contact page. We love community fundraising efforts and want to work with you!"
+    },
+    {
+      "question": "What exactly is getting donated?",
+      "answer": "We redistribute wheelchairs, walkers, adult diapers, and other essential medical equipment. As we grow, we're working to accept hospital beds and equipment that hospitals can no longer use but are still valuable to communities in need around the world."
+    },
+    {
+      "question": "Can I sponsor a specific category of item if I want my donation to go to a certain cause?",
+      "answer": "Yes! Visit our Donate page where you can choose to fund one of our ongoing programs. Whether it's wheelchairs, mobility aids, or other equipment categories, you can direct your donation to the cause that matters most to you."
+    },
+    {
+      "question": "How do I see what happens with my money?",
+      "answer": "Follow us on social media! We share regular updates on Instagram, Facebook, and TikTok showing exactly where donations go and the impact they create. We believe in transparency and want you to see the real difference your donation makes."
+    },
+    {
+      "question": "Does Care4ME accept international donations?",
+      "answer": "Yes, we do! If your payment method doesn't work with our standard system, please reach out to us directly. We'll work something out to accept your donation. Contact us at cae4medicalequipment@gmail.com or call 609-367-4603."
+    },
+    {
+      "question": "Is Care4ME a registered nonprofit?",
+      "answer": "Yes, we are a 501(c)(3) nonprofit organization registered in New Jersey. Every donation is tax-deductible. We operate with zero overhead, meaning 100% of donations fund our mission directly."
+    },
+    {
+      "question": "How can I volunteer with Care4ME?",
+      "answer": "Visit our Volunteer page to learn about current opportunities. We work with both remote volunteers and in-person partners. Whether you can help with collections, inspections, shipping coordination, or fundraising, we'd love to have you on our team!"
+    },
+    {
+      "question": "Can organizations partner with Care4ME?",
+      "answer": "Absolutely! We work with churches, NGOs, hospitals, and community organizations. If you're interested in partnering with us, please reach out to cae4medicalequipment@gmail.com or call 609-367-4603. Let's talk about how we can work together."
+    }
+  ],
+  "cta": {
+    "title": "Still have questions?",
+    "description": "Reach out to our team directly. We're here to help!",
+    "buttonLabel": "Go to Contact Page",
+    "buttonHref": "/contact-us"
+  },
+  "ctaCards": [
+    {
+      "icon": "📧",
+      "title": "Email",
+      "value": "cae4medicalequipment@gmail.com",
+      "href": "mailto:cae4medicalequipment@gmail.com"
+    },
+    {
+      "icon": "📞",
+      "title": "Phone",
+      "value": "(609) 367-4603",
+      "href": "tel:6093674603"
+    },
+    {
+      "icon": "💬",
+      "title": "Social Media",
+      "value": "DM us on Instagram, Facebook, or TikTok",
+      "href": ""
+    }
+  ]
+}

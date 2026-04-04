@@ -36,6 +36,7 @@ const BLOG_IMAGES_DIR = path.join(BASE_DIR, 'public', 'blog-images');
 const CAMPAIGNS_DIR = path.join(BASE_DIR, 'public', 'campaigns');
 const CAMPAIGNS_IMPACT_FILE = path.join(CAMPAIGNS_DIR, '_impact.json');
 const SINGLETON_CONTENT_DIR = path.join(BASE_DIR, 'content', 'pages');
+const SINGLETON_HISTORY_DIR = path.join(SINGLETON_CONTENT_DIR, '_history');
 const DEFAULT_BLOG_AUTHOR = process.env.DEFAULT_BLOG_AUTHOR || 'Darsh Gajera';
 const MAX_BLOG_IMAGES = 6;
 
@@ -76,6 +77,7 @@ const uploadSessions = new Map();
 const blogSessions = new Map();
 const campaignSessions = new Map();
 const pageSessions = new Map();
+const restoreSessions = new Map();
 
 function getFallbackLogoPath() {
   for (const logoPath of BLOG_LOGO_CANDIDATES) {
@@ -155,6 +157,15 @@ function schedulePageSessionCleanup(sessionId) {
   }, SESSION_TIMEOUT_MS);
 }
 
+function scheduleRestoreSessionCleanup(sessionId) {
+  setTimeout(() => {
+    if (restoreSessions.has(sessionId)) {
+      restoreSessions.delete(sessionId);
+      console.log(`🧹 Restore session ${sessionId} cleaned up`);
+    }
+  }, SESSION_TIMEOUT_MS);
+}
+
 const SINGLETON_PAGE_CONFIG = {
   home: {
     title: 'Home',
@@ -162,8 +173,10 @@ const SINGLETON_PAGE_CONFIG = {
       hero: 'Hero Text',
       'hero-media': 'Hero Media',
       stats: 'Quick Stats',
+      'how-it-works': 'How It Works',
       featured: 'Featured Campaign',
       'featured-progress': 'Featured Progress',
+      cta: 'Call To Action',
     },
   },
   'about-us': {
@@ -172,6 +185,8 @@ const SINGLETON_PAGE_CONFIG = {
       hero: 'Hero',
       impacts: 'Impact Boxes',
       story: 'Story + Quote',
+      values: 'Values Grid',
+      cta: 'Call To Action',
     },
   },
   donate: {
@@ -179,6 +194,9 @@ const SINGLETON_PAGE_CONFIG = {
     sections: {
       hero: 'Hero',
       tiers: 'Donation Tiers',
+      partners: 'Partners',
+      'trust-badges': 'Trust Badges',
+      'monthly-giving': 'Monthly Giving',
     },
   },
   volunteer: {
@@ -186,6 +204,7 @@ const SINGLETON_PAGE_CONFIG = {
     sections: {
       hero: 'Hero',
       form: 'Form Settings',
+      testimonials: 'Testimonials',
     },
   },
   'contact-us': {
@@ -193,6 +212,16 @@ const SINGLETON_PAGE_CONFIG = {
     sections: {
       hero: 'Hero',
       cards: 'Contact Cards',
+      form: 'Contact Form',
+    },
+  },
+  'faq-page': {
+    title: 'FAQ Page',
+    sections: {
+      hero: 'Hero',
+      questions: 'Questions',
+      cta: 'Bottom CTA',
+      'cta-cards': 'Bottom Contact Cards',
     },
   },
 };
@@ -205,6 +234,45 @@ function getSingletonPageFile(pageKey) {
   return path.join(SINGLETON_CONTENT_DIR, `${pageKey}.json`);
 }
 
+function getSingletonPageHistoryDir(pageKey) {
+  return path.join(SINGLETON_HISTORY_DIR, pageKey);
+}
+
+async function backupSingletonPageContent(pageKey) {
+  const pageFile = getSingletonPageFile(pageKey);
+  let currentRaw = null;
+
+  try {
+    currentRaw = await readFile(pageFile, 'utf8');
+  } catch {
+    return null;
+  }
+
+  const pageHistoryDir = getSingletonPageHistoryDir(pageKey);
+  await mkdir(pageHistoryDir, { recursive: true });
+  const snapshotId = String(Date.now());
+  await writeFile(path.join(pageHistoryDir, `${snapshotId}.json`), currentRaw);
+  return snapshotId;
+}
+
+async function listSingletonSnapshots(pageKey, limit = 10) {
+  const pageHistoryDir = getSingletonPageHistoryDir(pageKey);
+  const files = await readdir(pageHistoryDir).catch(() => []);
+  return files
+    .filter((name) => /^\d+\.json$/.test(name))
+    .sort((a, b) => Number(b.replace('.json', '')) - Number(a.replace('.json', '')))
+    .slice(0, Math.max(1, limit))
+    .map((name) => name.replace('.json', ''));
+}
+
+async function restoreSingletonSnapshot(pageKey, snapshotId) {
+  const snapshotFile = path.join(getSingletonPageHistoryDir(pageKey), `${snapshotId}.json`);
+  const snapshotRaw = await readFile(snapshotFile, 'utf8');
+  const snapshotContent = JSON.parse(snapshotRaw);
+  await writeSingletonPageContent(pageKey, snapshotContent);
+  return snapshotContent;
+}
+
 async function readSingletonPageContent(pageKey) {
   await ensureSingletonContentStorage();
   const raw = await readFile(getSingletonPageFile(pageKey), 'utf8');
@@ -213,8 +281,15 @@ async function readSingletonPageContent(pageKey) {
 
 async function writeSingletonPageContent(pageKey, content) {
   await ensureSingletonContentStorage();
+  await backupSingletonPageContent(pageKey);
   await writeFile(getSingletonPageFile(pageKey), JSON.stringify(content, null, 2));
   return content;
+}
+
+function formatSnapshotDate(snapshotId) {
+  const timestamp = Number(snapshotId);
+  if (!Number.isFinite(timestamp)) return snapshotId;
+  return new Date(timestamp).toLocaleString();
 }
 
 function listEditableSingletonPages() {
@@ -245,6 +320,87 @@ function clampModalValue(value, maxLength = 3900) {
   return String(value || '').slice(0, maxLength);
 }
 
+function isValidPageHref(href) {
+  if (!href) return false;
+  return /^\//.test(href) || /^(https?:\/\/|mailto:|tel:)/i.test(href);
+}
+
+function validatePageSectionDraft(session, draft) {
+  switch (`${session.pageKey}:${session.sectionKey}`) {
+    case 'home:stats':
+      if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one stat using: value | label | color';
+      return null;
+    case 'home:how-it-works':
+      if (!draft.title) return 'How It Works title is required.';
+      if (!Array.isArray(draft.cards) || draft.cards.length === 0) return 'Add at least one card using: step | title | description | color';
+      return null;
+    case 'home:featured-progress':
+      if (draft.fallbackTarget <= 0) return 'Target must be greater than 0.';
+      if (draft.fallbackRaised < 0) return 'Raised value cannot be negative.';
+      return null;
+    case 'home:cta':
+      if (!draft.title || !draft.description) return 'CTA title and description are required.';
+      if (!Array.isArray(draft.buttons) || draft.buttons.length === 0) return 'Add at least one CTA button using: label | href | style';
+      if (draft.buttons.some((btn) => !isValidPageHref(btn.href))) return 'Each CTA button href must start with /, http(s)://, mailto:, or tel:.';
+      return null;
+    case 'about-us:impacts':
+      if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one impact using: number | label';
+      return null;
+    case 'about-us:story':
+      if (!draft.heading || !draft.quote) return 'Story heading and quote are required.';
+      if (!Array.isArray(draft.paragraphs) || draft.paragraphs.length === 0) return 'Add at least one story paragraph (separate paragraphs with a blank line).';
+      return null;
+    case 'about-us:values':
+      if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one value using: icon | title | description';
+      return null;
+    case 'about-us:cta':
+      if (!draft.title || !draft.description) return 'CTA title and description are required.';
+      if (!Array.isArray(draft.buttons) || draft.buttons.length === 0) return 'Add at least one CTA button using: label | href | style';
+      if (draft.buttons.some((btn) => !isValidPageHref(btn.href))) return 'Each CTA button href must start with /, http(s)://, mailto:, or tel:.';
+      return null;
+    case 'donate:tiers':
+      if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one donation tier using: amount | impact | description | featured|normal';
+      return null;
+    case 'donate:partners':
+      if (!draft.title) return 'Partners section title is required.';
+      if (!Array.isArray(draft.items) || draft.items.length === 0) return 'Add at least one partner using: name | type';
+      return null;
+    case 'donate:trust-badges':
+      if (!draft.title) return 'Trust badges title is required.';
+      if (!Array.isArray(draft.items) || draft.items.length === 0) return 'Add at least one trust badge item (one per line).';
+      return null;
+    case 'volunteer:form':
+      if (!draft.heading || !draft.successMessage || !draft.submitLabel) return 'Form heading, success message, and submit label are required.';
+      if (!Array.isArray(draft.roles) || draft.roles.length === 0) return 'Add at least one volunteer role (one per line).';
+      return null;
+    case 'volunteer:testimonials':
+      if (!draft.title) return 'Testimonials title is required.';
+      if (!Array.isArray(draft.items) || draft.items.length === 0) return 'Add at least one testimonial using: name | role | years | quote';
+      return null;
+    case 'contact-us:cards':
+      if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one contact card using: icon | title | value | href';
+      if (draft.some((card) => card.href && !isValidPageHref(card.href))) return 'Each contact card href must start with /, http(s)://, mailto:, or tel:.';
+      return null;
+    case 'contact-us:form':
+      if (!draft.heading || !draft.successMessage || !draft.buttonLabel) return 'Form heading, success message, and button label are required.';
+      if (!Array.isArray(draft.subjects) || draft.subjects.length === 0) return 'Add at least one subject using: value | label';
+      return null;
+    case 'faq-page:questions':
+      if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one FAQ item using: question | answer';
+      return null;
+    case 'faq-page:cta':
+      if (!draft.title || !draft.description || !draft.buttonLabel || !draft.buttonHref) return 'FAQ CTA title, description, button label, and button href are required.';
+      if (!isValidPageHref(draft.buttonHref)) return 'FAQ CTA button href must start with /, http(s)://, mailto:, or tel:.';
+      return null;
+    case 'faq-page:cta-cards':
+      if (!Array.isArray(draft) || draft.length === 0) return 'Add at least one FAQ CTA card using: icon | title | value | href';
+      if (draft.some((card) => card.href && !isValidPageHref(card.href))) return 'Each FAQ CTA card href must start with /, http(s)://, mailto:, or tel:.';
+      return null;
+    default:
+      return null;
+  }
+}
+
 function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
   switch (`${pageKey}:${sectionKey}`) {
     case 'home:hero':
@@ -253,28 +409,54 @@ function getPageSectionCurrentSummary(pageKey, sectionKey, content) {
       return `Image: ${content.hero.media.imageSrc || 'none'}\nEyebrow: ${content.hero.media.eyebrow}\nHeadline: ${content.hero.media.headline}`;
     case 'home:stats':
       return serializeArrayLines(content.quickStats, (item) => `${item.value} | ${item.label} | ${item.color}`);
+    case 'home:how-it-works':
+      return `Title: ${content.howItWorks.title}\n${serializeArrayLines(content.howItWorks.cards, (item) => `${item.step} | ${item.title} | ${item.description} | ${item.color}`)}`;
     case 'home:featured':
       return `Slug: ${content.featuredCampaign.slug || '(none)'}\nEyebrow: ${content.featuredCampaign.eyebrow}\nTitle: ${content.featuredCampaign.fallbackTitle || ''}\nDescription: ${content.featuredCampaign.fallbackDescription || ''}\nImage: ${content.featuredCampaign.imageSrc || 'none'}`;
     case 'home:featured-progress':
       return `Raised: ${content.featuredCampaign.fallbackRaised}\nTarget: ${content.featuredCampaign.fallbackTarget}\nMetric Type: ${content.featuredCampaign.fallbackMetricType}\nMetric Unit: ${content.featuredCampaign.fallbackMetricUnit}`;
+    case 'home:cta':
+      return `Title: ${content.cta.title}\nDescription: ${content.cta.description}\n${serializeArrayLines(content.cta.buttons, (item) => `${item.label} | ${item.href} | ${item.style}`)}`;
     case 'about-us:hero':
       return `Badge: ${content.hero.badge}\nTitle: ${content.hero.title}`;
     case 'about-us:impacts':
       return serializeArrayLines(content.impacts, (item) => `${item.number} | ${item.label}`);
     case 'about-us:story':
       return `Heading: ${content.story.heading}\nQuote: ${content.story.quote}`;
+    case 'about-us:values':
+      return serializeArrayLines(content.values, (item) => `${item.icon} | ${item.title} | ${item.description}`);
+    case 'about-us:cta':
+      return `Title: ${content.cta.title}\nDescription: ${content.cta.description}\n${serializeArrayLines(content.cta.buttons, (item) => `${item.label} | ${item.href} | ${item.style}`)}`;
     case 'donate:hero':
       return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
     case 'donate:tiers':
       return serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`);
+    case 'donate:partners':
+      return `Title: ${content.partners.title}\n${serializeArrayLines(content.partners.items, (item) => `${item.name} | ${item.type}`)}`;
+    case 'donate:trust-badges':
+      return `Title: ${content.trustBadges.title}\nItems: ${(content.trustBadges.items || []).join(', ')}`;
+    case 'donate:monthly-giving':
+      return `Title: ${content.monthlyGiving.title}\nDescription: ${content.monthlyGiving.description}\nButton: ${content.monthlyGiving.buttonLabel}`;
     case 'volunteer:hero':
       return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
     case 'volunteer:form':
       return `Heading: ${content.form.heading}\nRoles: ${content.form.roles.join(', ')}`;
+    case 'volunteer:testimonials':
+      return `Title: ${content.testimonials.title}\n${serializeArrayLines(content.testimonials.items, (item) => `${item.name} | ${item.role} | ${item.years}`)}`;
     case 'contact-us:hero':
       return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
     case 'contact-us:cards':
       return serializeArrayLines(content.contactCards, (item) => `${item.icon} | ${item.title} | ${item.value} | ${item.href || ''}`);
+    case 'contact-us:form':
+      return `Heading: ${content.form.heading}\nSuccess: ${content.form.successMessage}\nButton: ${content.form.buttonLabel}\n${serializeArrayLines(content.form.subjects, (item) => `${item.value} | ${item.label}`)}`;
+    case 'faq-page:hero':
+      return `Title: ${content.hero.title}\nDescription: ${content.hero.description}`;
+    case 'faq-page:questions':
+      return serializeArrayLines(content.questions, (item) => `${item.question} | ${item.answer}`);
+    case 'faq-page:cta':
+      return `Title: ${content.cta.title}\nDescription: ${content.cta.description}\nButton Label: ${content.cta.buttonLabel}\nButton Href: ${content.cta.buttonHref}`;
+    case 'faq-page:cta-cards':
+      return serializeArrayLines(content.ctaCards, (item) => `${item.icon} | ${item.title} | ${item.value} | ${item.href || ''}`);
     default:
       return 'No preview available.';
   }
@@ -320,6 +502,16 @@ function buildPageSectionModal(sessionId, session) {
         )
       );
       break;
+    case 'home:how-it-works':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Section title').setStyle(TextInputStyle.Short).setValue(content.howItWorks.title || '').setRequired(true).setMaxLength(100)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('cards').setLabel('Line: step | title | description | color').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.howItWorks.cards, (item) => `${item.step} | ${item.title} | ${item.description} | ${item.color}`))).setRequired(true).setMaxLength(4000)
+        )
+      );
+      break;
     case 'home:featured':
       modal.addComponents(
         new ActionRowBuilder().addComponents(
@@ -352,6 +544,19 @@ function buildPageSectionModal(sessionId, session) {
         ),
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('fallbackMetricUnit').setLabel('Metric unit: USD or items').setStyle(TextInputStyle.Short).setValue(content.featuredCampaign.fallbackMetricUnit || 'USD').setRequired(true).setMaxLength(40)
+        )
+      );
+      break;
+    case 'home:cta':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('CTA title').setStyle(TextInputStyle.Short).setValue(content.cta.title || '').setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('CTA description').setStyle(TextInputStyle.Paragraph).setValue(content.cta.description || '').setRequired(true).setMaxLength(400)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttons').setLabel('Line: label | href | style').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.cta.buttons, (item) => `${item.label} | ${item.href} | ${item.style}`))).setRequired(true).setMaxLength(2000)
         )
       );
       break;
@@ -391,9 +596,30 @@ function buildPageSectionModal(sessionId, session) {
         )
       );
       break;
+    case 'about-us:values':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('values').setLabel('Line: icon | title | description').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.values, (item) => `${item.icon} | ${item.title} | ${item.description}`))).setRequired(true).setMaxLength(4000)
+        )
+      );
+      break;
+    case 'about-us:cta':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('CTA title').setStyle(TextInputStyle.Short).setValue(content.cta.title || '').setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('CTA description').setStyle(TextInputStyle.Paragraph).setValue(content.cta.description || '').setRequired(true).setMaxLength(400)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttons').setLabel('Line: label | href | style').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.cta.buttons, (item) => `${item.label} | ${item.href} | ${item.style}`))).setRequired(true).setMaxLength(2000)
+        )
+      );
+      break;
     case 'donate:hero':
     case 'volunteer:hero':
     case 'contact-us:hero':
+    case 'faq-page:hero':
       modal.addComponents(
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('title').setLabel('Page title').setStyle(TextInputStyle.Short).setValue(content.hero.title).setRequired(true).setMaxLength(120)
@@ -407,6 +633,39 @@ function buildPageSectionModal(sessionId, session) {
       modal.addComponents(
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('tiers').setLabel('Line format: amount | impact | desc | flag').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.tiers, (item) => `${item.amount} | ${item.impact} | ${item.description} | ${item.featured ? 'featured' : 'normal'}`))).setRequired(true).setMaxLength(4000)
+        )
+      );
+      break;
+    case 'donate:partners':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Partners section title').setStyle(TextInputStyle.Short).setValue(content.partners.title || '').setRequired(true).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('items').setLabel('Line: name | type').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.partners.items, (item) => `${item.name} | ${item.type}`))).setRequired(true).setMaxLength(3000)
+        )
+      );
+      break;
+    case 'donate:trust-badges':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Trust badges title').setStyle(TextInputStyle.Short).setValue(content.trustBadges.title || '').setRequired(true).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('items').setLabel('One badge per line').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue((content.trustBadges.items || []).join('\n'))).setRequired(true).setMaxLength(2000)
+        )
+      );
+      break;
+    case 'donate:monthly-giving':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Section title').setStyle(TextInputStyle.Short).setValue(content.monthlyGiving.title || '').setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('Section description').setStyle(TextInputStyle.Paragraph).setValue(content.monthlyGiving.description || '').setRequired(true).setMaxLength(500)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttonLabel').setLabel('Button label').setStyle(TextInputStyle.Short).setValue(content.monthlyGiving.buttonLabel || '').setRequired(true).setMaxLength(80)
         )
       );
       break;
@@ -426,10 +685,66 @@ function buildPageSectionModal(sessionId, session) {
         )
       );
       break;
+    case 'volunteer:testimonials':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('Testimonials title').setStyle(TextInputStyle.Short).setValue(content.testimonials.title || '').setRequired(true).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('items').setLabel('Line: name | role | years | quote').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.testimonials.items, (item) => `${item.name} | ${item.role} | ${item.years} | ${item.quote}`))).setRequired(true).setMaxLength(4000)
+        )
+      );
+      break;
     case 'contact-us:cards':
       modal.addComponents(
         new ActionRowBuilder().addComponents(
           new TextInputBuilder().setCustomId('cards').setLabel('One per line: icon | title | value | href').setStyle(TextInputStyle.Paragraph).setValue(serializeArrayLines(content.contactCards, (item) => `${item.icon} | ${item.title} | ${item.value} | ${item.href || ''}`)).setRequired(true).setMaxLength(1000)
+        )
+      );
+      break;
+    case 'contact-us:form':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('heading').setLabel('Form heading').setStyle(TextInputStyle.Short).setValue(content.form.heading || '').setRequired(true).setMaxLength(120)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('successMessage').setLabel('Success message').setStyle(TextInputStyle.Paragraph).setValue(content.form.successMessage || '').setRequired(true).setMaxLength(300)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttonLabel').setLabel('Button label').setStyle(TextInputStyle.Short).setValue(content.form.buttonLabel || '').setRequired(true).setMaxLength(80)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('subjects').setLabel('Line: value | label').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.form.subjects, (item) => `${item.value} | ${item.label}`))).setRequired(true).setMaxLength(2000)
+        )
+      );
+      break;
+    case 'faq-page:questions':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('questions').setLabel('Line: question | answer').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.questions, (item) => `${item.question} | ${item.answer}`))).setRequired(true).setMaxLength(4000)
+        )
+      );
+      break;
+    case 'faq-page:cta':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('title').setLabel('CTA title').setStyle(TextInputStyle.Short).setValue(content.cta.title || '').setRequired(true).setMaxLength(140)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('description').setLabel('CTA description').setStyle(TextInputStyle.Paragraph).setValue(content.cta.description || '').setRequired(true).setMaxLength(300)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttonLabel').setLabel('Button label').setStyle(TextInputStyle.Short).setValue(content.cta.buttonLabel || '').setRequired(true).setMaxLength(80)
+        ),
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('buttonHref').setLabel('Button href').setStyle(TextInputStyle.Short).setValue(content.cta.buttonHref || '').setRequired(true).setMaxLength(200)
+        )
+      );
+      break;
+    case 'faq-page:cta-cards':
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder().setCustomId('ctaCards').setLabel('Line: icon | title | value | href').setStyle(TextInputStyle.Paragraph).setValue(clampModalValue(serializeArrayLines(content.ctaCards, (item) => `${item.icon} | ${item.title} | ${item.value} | ${item.href || ''}`))).setRequired(true).setMaxLength(3000)
         )
       );
       break;
@@ -446,6 +761,7 @@ function parsePageSectionDraft(session, fields) {
     case 'donate:hero':
     case 'volunteer:hero':
     case 'contact-us:hero':
+    case 'faq-page:hero':
       return {
         title: fields.getTextInputValue('title').trim(),
         description: fields.getTextInputValue('description').trim(),
@@ -459,6 +775,11 @@ function parsePageSectionDraft(session, fields) {
       };
     case 'home:stats':
       return parseLineEntries(fields.getTextInputValue('stats'), 3).map(([value, label, color]) => ({ value, label, color }));
+    case 'home:how-it-works':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        cards: parseLineEntries(fields.getTextInputValue('cards'), 4).map(([step, title, description, color]) => ({ step, title, description, color })),
+      };
     case 'home:featured':
       return {
         slug: fields.getTextInputValue('slug').trim(),
@@ -476,6 +797,12 @@ function parsePageSectionDraft(session, fields) {
         fallbackMetricUnit: fields.getTextInputValue('fallbackMetricUnit').trim() || 'USD',
       };
     }
+    case 'home:cta':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        description: fields.getTextInputValue('description').trim(),
+        buttons: parseLineEntries(fields.getTextInputValue('buttons'), 3).map(([label, href, style]) => ({ label, href, style })),
+      };
     case 'about-us:hero':
       return {
         badge: fields.getTextInputValue('badge').trim(),
@@ -491,6 +818,14 @@ function parsePageSectionDraft(session, fields) {
         quote: fields.getTextInputValue('quote').trim(),
         paragraphs: fields.getTextInputValue('paragraphs').split(/\r?\n\r?\n/).map((item) => item.trim()).filter(Boolean),
       };
+    case 'about-us:values':
+      return parseLineEntries(fields.getTextInputValue('values'), 3).map(([icon, title, description]) => ({ icon, title, description }));
+    case 'about-us:cta':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        description: fields.getTextInputValue('description').trim(),
+        buttons: parseLineEntries(fields.getTextInputValue('buttons'), 3).map(([label, href, style]) => ({ label, href, style })),
+      };
     case 'donate:tiers':
       return parseLineEntries(fields.getTextInputValue('tiers'), 4).map(([amount, impact, description, featured]) => ({
         amount,
@@ -498,6 +833,22 @@ function parsePageSectionDraft(session, fields) {
         description,
         featured: /featured|true|yes/i.test(featured),
       }));
+    case 'donate:partners':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        items: parseLineEntries(fields.getTextInputValue('items'), 2).map(([name, type]) => ({ name, type })),
+      };
+    case 'donate:trust-badges':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        items: fields.getTextInputValue('items').split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+      };
+    case 'donate:monthly-giving':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        description: fields.getTextInputValue('description').trim(),
+        buttonLabel: fields.getTextInputValue('buttonLabel').trim(),
+      };
     case 'volunteer:form':
       return {
         heading: fields.getTextInputValue('heading').trim(),
@@ -505,8 +856,31 @@ function parsePageSectionDraft(session, fields) {
         roles: fields.getTextInputValue('roles').split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
         submitLabel: fields.getTextInputValue('submitLabel').trim(),
       };
+    case 'volunteer:testimonials':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        items: parseLineEntries(fields.getTextInputValue('items'), 4).map(([name, role, years, quote]) => ({ name, role, years, quote })),
+      };
     case 'contact-us:cards':
       return parseLineEntries(fields.getTextInputValue('cards'), 4).map(([icon, title, value, href]) => ({ icon, title, value, href }));
+    case 'contact-us:form':
+      return {
+        heading: fields.getTextInputValue('heading').trim(),
+        successMessage: fields.getTextInputValue('successMessage').trim(),
+        buttonLabel: fields.getTextInputValue('buttonLabel').trim(),
+        subjects: parseLineEntries(fields.getTextInputValue('subjects'), 2).map(([value, label]) => ({ value, label })),
+      };
+    case 'faq-page:questions':
+      return parseLineEntries(fields.getTextInputValue('questions'), 2).map(([question, answer]) => ({ question, answer }));
+    case 'faq-page:cta':
+      return {
+        title: fields.getTextInputValue('title').trim(),
+        description: fields.getTextInputValue('description').trim(),
+        buttonLabel: fields.getTextInputValue('buttonLabel').trim(),
+        buttonHref: fields.getTextInputValue('buttonHref').trim(),
+      };
+    case 'faq-page:cta-cards':
+      return parseLineEntries(fields.getTextInputValue('ctaCards'), 4).map(([icon, title, value, href]) => ({ icon, title, value, href }));
     default:
       return null;
   }
@@ -518,6 +892,7 @@ function applyPageSectionDraft(content, session, draft) {
     case 'donate:hero':
     case 'volunteer:hero':
     case 'contact-us:hero':
+    case 'faq-page:hero':
       content.hero = { ...content.hero, ...draft };
       break;
     case 'home:hero-media':
@@ -526,11 +901,17 @@ function applyPageSectionDraft(content, session, draft) {
     case 'home:stats':
       content.quickStats = draft;
       break;
+    case 'home:how-it-works':
+      content.howItWorks = { ...content.howItWorks, ...draft };
+      break;
     case 'home:featured':
       content.featuredCampaign = { ...content.featuredCampaign, ...draft };
       break;
     case 'home:featured-progress':
       content.featuredCampaign = { ...content.featuredCampaign, ...draft };
+      break;
+    case 'home:cta':
+      content.cta = { ...content.cta, ...draft };
       break;
     case 'about-us:hero':
       content.hero = { ...content.hero, ...draft };
@@ -541,14 +922,44 @@ function applyPageSectionDraft(content, session, draft) {
     case 'about-us:story':
       content.story = { ...content.story, ...draft };
       break;
+    case 'about-us:values':
+      content.values = draft;
+      break;
+    case 'about-us:cta':
+      content.cta = { ...content.cta, ...draft };
+      break;
     case 'donate:tiers':
       content.tiers = draft;
+      break;
+    case 'donate:partners':
+      content.partners = { ...content.partners, ...draft };
+      break;
+    case 'donate:trust-badges':
+      content.trustBadges = { ...content.trustBadges, ...draft };
+      break;
+    case 'donate:monthly-giving':
+      content.monthlyGiving = { ...content.monthlyGiving, ...draft };
       break;
     case 'volunteer:form':
       content.form = { ...content.form, ...draft };
       break;
+    case 'volunteer:testimonials':
+      content.testimonials = { ...content.testimonials, ...draft };
+      break;
     case 'contact-us:cards':
       content.contactCards = draft;
+      break;
+    case 'contact-us:form':
+      content.form = { ...content.form, ...draft };
+      break;
+    case 'faq-page:questions':
+      content.questions = draft;
+      break;
+    case 'faq-page:cta':
+      content.cta = { ...content.cta, ...draft };
+      break;
+    case 'faq-page:cta-cards':
+      content.ctaCards = draft;
       break;
     default:
       break;
@@ -1159,6 +1570,8 @@ client.on(Events.MessageCreate, async (message) => {
         { name: '🧩 SINGLETON PAGES', value: '─────────────────────────────', inline: false },
         { name: '!pages', value: 'List editable singleton pages + sections', inline: true },
         { name: '!page-edit [page] [section]', value: 'Edit singleton page content', inline: true },
+        { name: '!page-history [page] [limit]', value: 'Show recent backups for singleton page', inline: true },
+        { name: '!page-restore [page] [snapshotId|latest]', value: 'Start restore flow with confirm button', inline: true },
         { name: '!page-image home featured', value: 'Attach image for home featured campaign block', inline: true },
         { name: '!page-image home hero-media', value: 'Attach image for home hero media block', inline: true }
       )
@@ -1317,6 +1730,96 @@ client.on(Events.MessageCreate, async (message) => {
       .setFooter({ text: 'Use !page-edit [page] [section]  e.g. !page-edit home stats' });
 
     await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !page-history [page] [limit]
+  if (command === 'page-history') {
+    const pageKey = (args[1] || '').toLowerCase();
+    const requestedLimit = Number(args[2] || 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 20) : 10;
+
+    if (!SINGLETON_PAGE_CONFIG[pageKey]) {
+      await message.reply('❓ Usage: `!page-history [page] [limit]`\nExample: `!page-history faq-page 10`\nRun `!pages` to see valid pages.');
+      return;
+    }
+
+    const snapshots = await listSingletonSnapshots(pageKey, limit);
+    if (snapshots.length === 0) {
+      await message.reply(`📭 No backups found for **${pageKey}** yet.`);
+      return;
+    }
+
+    const lines = snapshots.map((id, idx) => `${idx + 1}. ${id}  (${formatSnapshotDate(id)})`).join('\n');
+    const embed = new EmbedBuilder()
+      .setColor(0x2BA5D7)
+      .setTitle(`🕘 ${SINGLETON_PAGE_CONFIG[pageKey].title} History`)
+      .setDescription(lines)
+      .setFooter({ text: `Start restore: !page-restore ${pageKey} latest` });
+
+    await message.reply({ embeds: [embed] });
+    return;
+  }
+
+  // !page-restore [page] [snapshotId|latest] (confirm button flow)
+  if (command === 'page-restore') {
+    const pageKey = (args[1] || '').toLowerCase();
+    const requestedSnapshot = (args[2] || 'latest').toLowerCase();
+
+    if (!SINGLETON_PAGE_CONFIG[pageKey]) {
+      await message.reply('❓ Usage: `!page-restore [page] [snapshotId|latest]`\nExample: `!page-restore faq-page latest`\nRun `!pages` to see valid pages.');
+      return;
+    }
+
+    try {
+      const snapshots = await listSingletonSnapshots(pageKey, 50);
+      if (snapshots.length === 0) {
+        await message.reply(`📭 No backups found for **${pageKey}**.`);
+        return;
+      }
+
+      const snapshotId = requestedSnapshot === 'latest' ? snapshots[0] : requestedSnapshot;
+      if (!snapshots.includes(snapshotId)) {
+        await message.reply(`❌ Snapshot **${snapshotId}** not found for **${pageKey}**. Run \`!page-history ${pageKey}\`.`);
+        return;
+      }
+
+      const restoreSessionId = Date.now();
+      restoreSessions.set(restoreSessionId, {
+        pageKey,
+        snapshotId,
+        userId: message.author.id,
+        userName: message.author.username,
+      });
+      scheduleRestoreSessionCleanup(restoreSessionId);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`page_restore_confirm_${restoreSessionId}`)
+          .setLabel('✅ Confirm Restore')
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(`page_restore_cancel_${restoreSessionId}`)
+          .setLabel('❌ Cancel')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      const embed = new EmbedBuilder()
+        .setColor(0xF39C12)
+        .setTitle('⚠️ Confirm Singleton Restore')
+        .addFields(
+          { name: 'Page', value: SINGLETON_PAGE_CONFIG[pageKey].title, inline: true },
+          { name: 'Snapshot', value: snapshotId, inline: true },
+          { name: 'Snapshot Time', value: formatSnapshotDate(snapshotId), inline: false },
+          { name: 'Note', value: 'This will replace current page content. Current content will be auto-backed up first.', inline: false }
+        )
+        .setFooter({ text: 'Click Confirm Restore to continue' });
+
+      await message.reply({ embeds: [embed], components: [row] });
+    } catch (error) {
+      console.error('Page restore error:', error);
+      await message.reply(`❌ Failed to restore page snapshot: ${error.message}`);
+    }
     return;
   }
 
@@ -2222,6 +2725,44 @@ async function showCampaignEditPreview(interaction, session, sessionId) {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    if (interaction.isButton() && interaction.customId.startsWith('page_restore_confirm_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = restoreSessions.get(sessionId);
+
+      if (!session) return await safeReply(interaction, '❌ Restore session expired.');
+      if (session.userId !== interaction.user.id) return await safeReply(interaction, '❌ Only the user who started restore can confirm it.');
+
+      await safeDeferReply(interaction);
+      try {
+        await restoreSingletonSnapshot(session.pageKey, session.snapshotId);
+        restoreSessions.delete(sessionId);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x7CB342)
+          .setTitle('✅ Singleton Page Restored')
+          .addFields(
+            { name: 'Page', value: SINGLETON_PAGE_CONFIG[session.pageKey].title, inline: true },
+            { name: 'Snapshot', value: session.snapshotId, inline: true },
+            { name: 'Snapshot Time', value: formatSnapshotDate(session.snapshotId), inline: false }
+          )
+          .setFooter({ text: 'Current version was auto-backed up before restore write' });
+
+        return await interaction.editReply({ embeds: [embed], components: [] });
+      } catch (error) {
+        return await interaction.editReply({ content: `❌ Failed to restore page snapshot: ${error.message}`, embeds: [], components: [] });
+      }
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('page_restore_cancel_')) {
+      const sessionId = parseInt(interaction.customId.split('_')[3], 10);
+      const session = restoreSessions.get(sessionId);
+      if (!session) return await safeReply(interaction, '❌ Restore session expired.');
+      if (session.userId !== interaction.user.id) return await safeReply(interaction, '❌ Only the user who started restore can cancel it.');
+
+      restoreSessions.delete(sessionId);
+      return await safeReply(interaction, '❌ Restore cancelled.');
+    }
+
     if (interaction.isButton() && interaction.customId.startsWith('page_edit_open_')) {
       const sessionId = parseInt(interaction.customId.split('_')[3], 10);
       const session = pageSessions.get(sessionId);
@@ -2242,6 +2783,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const draft = parsePageSectionDraft(session, interaction.fields);
       if (draft == null) return await safeReply(interaction, '❌ Failed to parse page content.');
+
+      const validationError = validatePageSectionDraft(session, draft);
+      if (validationError) return await safeReply(interaction, `❌ ${validationError}`);
 
       session.draft = draft;
 
