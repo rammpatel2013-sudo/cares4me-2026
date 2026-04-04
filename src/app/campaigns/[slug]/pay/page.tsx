@@ -1,51 +1,8 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import { notFound } from 'next/navigation';
 import PaymentClient from './PaymentClient';
+import { loadCampaignBySlug } from '@/lib/getCampaigns';
 
 export const dynamic = 'force-dynamic';
-
-type CampaignData = {
-  id: number;
-  slug: string;
-  title: string;
-  description: string;
-  targetAmount: number;
-  raisedAmount: number;
-  metricType: 'currency' | 'count';
-  metricUnit: string;
-  beneficiaries?: string;
-  status: 'active' | 'archived';
-};
-
-async function loadCampaignBySlug(slug: string): Promise<CampaignData | null> {
-  const campaignsDir = path.join(process.cwd(), 'public', 'campaigns');
-  try {
-    const files = await fs.readdir(campaignsDir);
-    for (const file of files) {
-      if (!file.endsWith('.json') || file.startsWith('_')) continue;
-      try {
-        const raw = await fs.readFile(path.join(campaignsDir, file), 'utf8');
-        const data = JSON.parse(raw);
-        if (data.slug === slug) {
-          return {
-            id: data.id,
-            slug: data.slug,
-            title: data.title,
-            description: data.description,
-            targetAmount: Number(data.targetAmount) || 0,
-            raisedAmount: Number(data.raisedAmount) || 0,
-            metricType: data.metricType === 'count' ? 'count' : 'currency',
-            metricUnit: data.metricUnit || 'USD',
-            beneficiaries: data.beneficiaries || '',
-            status: data.status === 'archived' ? 'archived' : 'active',
-          };
-        }
-      } catch {}
-    }
-  } catch {}
-  return null;
-}
 
 export default async function CampaignPayPage({
   params,

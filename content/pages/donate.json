@@ -1,0 +1,40 @@
+{
+  "hero": {
+    "title": "Make Your Impact",
+    "description": "Every donation goes directly to real people in need. See exactly what your gift provides."
+  },
+  "tiers": [
+    { "amount": "$5", "impact": "1 hot meal for a senior", "description": "Meals on Wheels USA", "featured": false },
+    { "amount": "$10", "impact": "1 week prenatal vitamins", "description": "Women's Health Network USA", "featured": false },
+    { "amount": "$20", "impact": "1 month after-school meals", "description": "No Kid Hungry USA", "featured": false },
+    { "amount": "$50", "impact": "1 month safe housing", "description": "Domestic Violence Programs USA", "featured": false },
+    { "amount": "$100", "impact": "1 year student education", "description": "India Education Program", "featured": true },
+    { "amount": "$125", "impact": "1 day blind school care", "description": "Blind School India", "featured": true },
+    { "amount": "Custom", "impact": "Your choice of impact", "description": "Flexible allocation", "featured": false }
+  ],
+  "partners": {
+    "title": "Where Your Donation Goes",
+    "items": [
+      { "name": "Feeding America", "type": "Senior Care Network" },
+      { "name": "Meals on Wheels America", "type": "Nutrition Partner" },
+      { "name": "No Kid Hungry", "type": "Child Food Programs" },
+      { "name": "Women's Aid", "type": "Domestic Violence Support" },
+      { "name": "St. Barnabas Medical Center", "type": "Hospital Partner" },
+      { "name": "Blind School India", "type": "Education & Care" }
+    ]
+  },
+  "trustBadges": {
+    "title": "Why Donate to Care4ME?",
+    "items": [
+      "501(c)(3) Verified",
+      "100% Tax-Deductible",
+      "Zero Overhead",
+      "Secure Donation"
+    ]
+  },
+  "monthlyGiving": {
+    "title": "Become a Monthly Supporter",
+    "description": "Transform lives every month. Monthly giving powers consistent, sustainable impact.",
+    "buttonLabel": "Start Monthly Giving"
+  }
+}

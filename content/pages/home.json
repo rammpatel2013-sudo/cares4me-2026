@@ -1,0 +1,58 @@
+{
+  "hero": {
+    "title": "Restoring Health, Renewing Hope",
+    "description": "One step at a time. We're transforming lives through health restoration and community care. From education in India to seniors in the USA, every donation creates real, measurable impact.",
+    "primaryButton": {
+      "label": "Donate Now",
+      "href": "/donate"
+    },
+    "secondaryButton": {
+      "label": "Volunteer",
+      "href": "/volunteer"
+    },
+    "media": {
+      "imageSrc": "",
+      "imageAlt": "",
+      "eyebrow": "Our Mission",
+      "headline": "100% of donations fund health programs directly"
+    }
+  },
+  "quickStats": [
+    { "value": "847+", "label": "Students Educated", "color": "#2BA5D7" },
+    { "value": "$127K", "label": "Raised & Deployed", "color": "#7CB342" },
+    { "value": "18", "label": "Active Programs", "color": "#1E5A96" },
+    { "value": "100%", "label": "To Programs", "color": "#2BA5D7" }
+  ],
+  "howItWorks": {
+    "title": "How It Works",
+    "cards": [
+      { "step": "1", "title": "You Donate", "description": "Choose your donation amount — every level creates real impact.", "color": "#7CB342" },
+      { "step": "2", "title": "We Allocate", "description": "Your donation goes directly to programs — no overhead.", "color": "#2BA5D7" },
+      { "step": "3", "title": "Lives Change", "description": "Seniors get meals, students get education, health is restored.", "color": "#1E5A96" }
+    ]
+  },
+  "featuredCampaign": {
+    "eyebrow": "Campaign Highlight",
+    "slug": "",
+    "fallbackTitle": "Student Education Program",
+    "fallbackDescription": "$100 funds one student's complete education for a full year in India. This includes tuition, books, meals, and health supplies. Every donation transforms a life.",
+    "fallbackRaised": 50000,
+    "fallbackTarget": 75000,
+    "fallbackMetricType": "currency",
+    "fallbackMetricUnit": "USD",
+    "imageSrc": "",
+    "imageAlt": "",
+    "imagePlaceholder": "Campaign Photo Placeholder",
+    "ctaLabel": "View All Campaigns",
+    "ctaHref": "/campaigns"
+  },
+  "cta": {
+    "title": "Ready to Make an Impact?",
+    "description": "Choose to donate, volunteer, or partner with us today.",
+    "buttons": [
+      { "label": "Donate", "href": "/donate", "style": "primary-green" },
+      { "label": "Volunteer", "href": "/volunteer", "style": "primary-blue" },
+      { "label": "Partner", "href": "/partners", "style": "outline-white" }
+    ]
+  }
+}

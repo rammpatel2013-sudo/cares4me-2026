@@ -11,12 +11,39 @@
 - Backend API & database for all forms
 - Authentication/admin access
 - Email routing (Formspree/EmailJS)
-- Payment gateway (Venmo, PayPal)
+- Payment gateway hardening, logging, reconciliation, and production operations
 - QR code system for forms/campaigns
 - 3D image/model support
 - Admin CMS for content/media
 - SEO/AI content generation
 - Accessibility & analytics
+
+## Deployment Safety Notes
+
+- Keep short-lived backup branches for significant releases before merging to `main`
+- Current backup branch for campaign payment rollout: `backup/campaign-paypal-2026-04-04`
+- Current backup branch for singleton CMS rollout: `backup/singleton-cms-2026-04-04`
+- Keep backup branch until production behavior is stable, then delete local and remote copies
+- Preferred rollback path is `git revert` on `main`; backup branch is secondary restore point
+- When deleting later:
+	- local: `git branch -d backup/campaign-paypal-2026-04-04`
+	- remote: `git push origin --delete backup/campaign-paypal-2026-04-04`
+	- local: `git branch -d backup/singleton-cms-2026-04-04`
+	- remote: `git push origin --delete backup/singleton-cms-2026-04-04`
+
+## Current Pipeline Status
+
+- **Foundation / frontend shell**: complete
+- **Blog publishing workflow**: complete first version via Discord bot + JSON/file storage
+- **Campaign management workflow**: complete first version via Discord bot + JSON/file storage
+- **Singleton page editing workflow**: complete first version via Discord bot + JSON/file storage
+- **Campaign payment flow**: complete first version using PayPal Smart Buttons with Venmo eligibility through PayPal
+- **Backend API + database platform**: pending
+- **Admin authentication**: pending
+- **Form submission/data layer**: pending
+- **QR code system**: pending
+- **3D media support**: pending
+- **Analytics / accessibility hardening**: pending
 
 ---
 
@@ -25,6 +52,11 @@
 - Media upload API (images, 3D, video)
 - Store files in /public or free cloud
 - Gallery: Upload all images from public folder, enable tagging/captioning for each image
+
+## 1A. Singleton CMS Expansion
+- Extend `!page-edit` coverage to the remaining content-driven singleton sections where page owners need Discord control
+- Keep `content/pages/*.json` as the source of truth until a backend/admin system replaces file-based editing
+- Preserve shared loader approach so homepage featured campaign, campaign pages, and singleton pages all read through centralized access logic
 
 ## 2. 3D Image Support (Past Phase)
 - Integrate 3D image viewer for gallery/campaigns (Three.js, react-three-fiber – both free)
@@ -52,7 +84,7 @@
 - QR code generator for forms/socials (qrcode.react, goqr.me)
 - Social subscribe links
 - Email routing for all inquiries (Formspree, EmailJS, or Gmail SMTP – all have free plans)
-- Venmo integration for donations (Venmo.me links, no fees for personal use)
+- PayPal Smart Buttons with Venmo eligibility for donations; next step is operational hardening and reporting
 
 ## 7. Further Optimization
 - Use only free/open-source tools and APIs
