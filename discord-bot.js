@@ -419,13 +419,8 @@ async function saveBlogPost(blogData) {
   let imageType = null;
   const inlineImages = [];
 
-  // Use pre-selected image (e.g., approved AI preview) when provided.
-  if (blogData.preselectedImage) {
-    imageFilename = blogData.preselectedImage;
-    imageType = blogData.preselectedImageType || 'ai';
-  }
-
-  if (!imageFilename && Array.isArray(blogData.userImages) && blogData.userImages.length > 0) {
+  // User-provided images always win over AI images.
+  if (Array.isArray(blogData.userImages) && blogData.userImages.length > 0) {
     imageFilename = blogData.userImages[0];
     imageType = 'upload';
     inlineImages.push(...blogData.userImages.slice(1));
@@ -435,14 +430,22 @@ async function saveBlogPost(blogData) {
   if (!imageFilename && blogData.userImage) {
     imageFilename = blogData.userImage;
     imageType = 'upload';
-  } else {
+  }
+
+  // Use pre-selected image (e.g., approved AI preview) only when user did not upload one.
+  if (!imageFilename && blogData.preselectedImage) {
+    imageFilename = blogData.preselectedImage;
+    imageType = blogData.preselectedImageType || 'ai';
+  }
+
+  if (!imageFilename) {
     // Generate AI image
-    if (!imageFilename) {
-      imageFilename = await generateBlogImage(blogData.title, blogData.category, blogData.imagePrompt || '');
-      if (imageFilename) {
-        imageType = 'ai';
-      }
+    imageFilename = await generateBlogImage(blogData.title, blogData.category, blogData.imagePrompt || '');
+    if (imageFilename) {
+      imageType = 'ai';
     }
+  } else {
+    // Keep existing chosen image
   }
   
   const post = {
@@ -700,9 +703,14 @@ client.on(Events.MessageCreate, async (message) => {
     session.userImages = [...(session.userImages || []), ...newlySaved];
     session.userImage = session.userImages[0] || null;
 
+    // If user uploads images after AI preview generation, prefer uploaded image flow.
+    if (session.generatedImageForApproval) {
+      session.generatedImageForApproval = null;
+    }
+
     await message.reply(
       `✅ Added ${newlySaved.length} image(s). Total: ${session.userImages.length}/${MAX_BLOG_IMAGES}.\n` +
-      `First image = hero, remaining images = inline article images.`
+      `First image = hero, remaining images = inline article images. Uploaded hero will be used instead of AI.`
     );
     return;
   }
