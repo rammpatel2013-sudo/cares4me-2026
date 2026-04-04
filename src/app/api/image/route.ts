@@ -11,12 +11,19 @@ export async function GET(request: NextRequest) {
   }
 
   const safeFilename = path.basename(filename);
-  const publicDir = path.join(/*turbopackIgnore: true*/ process.cwd(), 'public');
-  const candidatePaths = [
-    path.join(publicDir, 'blog-images', safeFilename),
-    path.join(publicDir, 'uploads', safeFilename),
-    path.join(publicDir, 'images', safeFilename),
-  ];
+  const publicDirs = [
+    process.env.APP_DIR ? path.join(process.env.APP_DIR, 'public') : '',
+    path.join(/*turbopackIgnore: true*/ process.cwd(), 'public'),
+  ].filter(Boolean);
+
+  const candidatePaths: string[] = [];
+  for (const publicDir of publicDirs) {
+    candidatePaths.push(
+      path.join(publicDir, 'blog-images', safeFilename),
+      path.join(publicDir, 'uploads', safeFilename),
+      path.join(publicDir, 'images', safeFilename),
+    );
+  }
   
   try {
     let fileBuffer = null;
