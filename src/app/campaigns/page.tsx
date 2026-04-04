@@ -11,6 +11,8 @@ type CampaignItem = {
   description: string;
   targetAmount: number;
   raisedAmount: number;
+  metricType?: 'currency' | 'count';
+  metricUnit?: string;
   status: 'active' | 'archived';
   beneficiaries?: string;
   updatedAt?: string;
@@ -36,6 +38,13 @@ function formatCurrency(value: number) {
     currency: 'USD',
     maximumFractionDigits: 0,
   }).format(Number.isFinite(value) ? value : 0);
+}
+
+function formatMetric(value: number, metricType: 'currency' | 'count', metricUnit?: string) {
+  if (metricType === 'currency') {
+    return formatCurrency(value);
+  }
+  return `${Math.round(value).toLocaleString('en-US')} ${metricUnit || 'items'}`;
 }
 
 function computePercentage(raised: number, target: number) {
@@ -65,6 +74,8 @@ async function loadCampaigns(): Promise<CampaignItem[]> {
           description: data.description,
           targetAmount: Number(data.targetAmount) || 0,
           raisedAmount: Number(data.raisedAmount) || 0,
+          metricType: data.metricType === 'count' ? 'count' : 'currency',
+          metricUnit: data.metricUnit || 'USD',
           status: data.status === 'archived' ? 'archived' : 'active',
           beneficiaries: data.beneficiaries || '',
           updatedAt: data.updatedAt || data.createdAt,
@@ -126,6 +137,8 @@ export default async function CampaignsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {campaigns.map((campaign) => {
                 const percentage = computePercentage(campaign.raisedAmount, campaign.targetAmount);
+                const metricType = campaign.metricType === 'count' ? 'count' : 'currency';
+                const metricUnit = campaign.metricUnit || (metricType === 'currency' ? 'USD' : 'items');
 
                 return (
                   <div key={campaign.id} className="bg-[#F5F5F5] rounded-xl p-6 hover:shadow-lg transition">
@@ -139,7 +152,7 @@ export default async function CampaignsPage() {
                     <div className="mb-4">
                       <div className="flex justify-between mb-2">
                         <span className="text-sm font-bold text-gray-900">Progress</span>
-                        <span className="text-sm text-gray-600">{formatCurrency(campaign.raisedAmount)} of {formatCurrency(campaign.targetAmount)}</span>
+                        <span className="text-sm text-gray-600">{formatMetric(campaign.raisedAmount, metricType, metricUnit)} of {formatMetric(campaign.targetAmount, metricType, metricUnit)}</span>
                       </div>
                       <div className="w-full bg-gray-300 rounded-full h-2">
                         <div

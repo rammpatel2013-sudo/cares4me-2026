@@ -483,6 +483,40 @@ function toNumberAmount(value = '') {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseMetricInput(rawValue = '', fallbackUnit = 'items') {
+  const input = String(rawValue || '').trim();
+  const value = toNumberAmount(input);
+  const isCurrency = /\$|usd|dollar/i.test(input);
+
+  if (isCurrency) {
+    return {
+      value,
+      metricType: 'currency',
+      metricUnit: 'USD',
+    };
+  }
+
+  // Capture words after the numeric portion (e.g., "500 pairs" -> "pairs").
+  const unitCandidate = input.replace(/^[^0-9]*[0-9.,]+\s*/i, '').trim();
+  return {
+    value,
+    metricType: 'count',
+    metricUnit: unitCandidate || fallbackUnit,
+  };
+}
+
+function formatCampaignMetric(value = 0, metricType = 'currency', metricUnit = 'USD') {
+  const safeValue = Number.isFinite(Number(value)) ? Number(value) : 0;
+  if (metricType === 'currency') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(safeValue);
+  }
+  return `${safeValue.toLocaleString('en-US')} ${metricUnit || 'items'}`;
+}
+
 async function ensureCampaignStorage() {
   await mkdir(CAMPAIGNS_DIR, { recursive: true });
 }
@@ -512,13 +546,18 @@ async function saveCampaign(campaignData, existingFile = null) {
   const slug = toSlug(campaignData.title || `campaign-${id}`);
   const filename = existingFile || `${id}-${slug}.json`;
 
+  const targetMetric = parseMetricInput(campaignData.targetAmount, campaignData.metricUnit || 'items');
+  const raisedMetric = parseMetricInput(campaignData.raisedAmount, targetMetric.metricType === 'currency' ? 'USD' : targetMetric.metricUnit);
+
   const payload = {
     id,
     slug,
     title: campaignData.title,
     description: campaignData.description,
-    targetAmount: toNumberAmount(campaignData.targetAmount),
-    raisedAmount: toNumberAmount(campaignData.raisedAmount),
+    targetAmount: targetMetric.value,
+    raisedAmount: raisedMetric.value,
+    metricType: targetMetric.metricType,
+    metricUnit: targetMetric.metricType === 'currency' ? 'USD' : (targetMetric.metricUnit || 'items'),
     beneficiaries: campaignData.beneficiaries || '',
     status: campaignData.status === 'archived' ? 'archived' : 'active',
     createdAt: campaignData.createdAt || now,
@@ -945,7 +984,7 @@ client.on(Events.MessageCreate, async (message) => {
 
       const lines = campaigns.slice(0, 20).map((item, idx) => {
         const status = item.status === 'archived' ? 'Archived' : 'Active';
-        return `**${idx + 1}.** ${item.title}\n   💰 ${item.raisedAmount || 0} / ${item.targetAmount || 0} | ${status}`;
+        return `**${idx + 1}.** ${item.title}\n   📈 ${formatCampaignMetric(item.raisedAmount || 0, item.metricType, item.metricUnit)} / ${formatCampaignMetric(item.targetAmount || 0, item.metricType, item.metricUnit)} | ${status}`;
       });
 
       const embed = new EmbedBuilder()
@@ -2043,8 +2082,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       session.draft = draft;
 
-      const target = toNumberAmount(draft.targetAmount);
-      const raised = toNumberAmount(draft.raisedAmount);
+      const parsedTarget = parseMetricInput(draft.targetAmount);
+      const parsedRaised = parseMetricInput(draft.raisedAmount, parsedTarget.metricType === 'currency' ? 'USD' : parsedTarget.metricUnit);
+      const target = parsedTarget.value;
+      const raised = parsedRaised.value;
       const percentage = target > 0 ? Math.round((raised / target) * 100) : 0;
 
       const row = new ActionRowBuilder().addComponents(
@@ -2058,7 +2099,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .addFields(
           { name: 'Title', value: draft.title, inline: false },
           { name: 'Description', value: draft.description, inline: false },
-          { name: 'Progress', value: `${raised} of ${target} (${percentage}%)`, inline: true },
+          { name: 'Progress', value: `${formatCampaignMetric(raised, parsedTarget.metricType, parsedTarget.metricUnit)} of ${formatCampaignMetric(target, parsedTarget.metricType, parsedTarget.metricUnit)} (${percentage}%)`, inline: true },
           { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true }
         )
         .setFooter({ text: 'Approve to publish to website' });
@@ -2159,7 +2200,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .addFields(
           { name: 'Title', value: draft.title, inline: false },
           { name: 'Description', value: draft.description, inline: false },
-          { name: 'Progress', value: `${toNumberAmount(draft.raisedAmount)} of ${toNumberAmount(draft.targetAmount)}`, inline: true },
+          {
+            name: 'Progress',
+            value: `${formatCampaignMetric(toNumberAmount(draft.raisedAmount), parseMetricInput(draft.targetAmount).metricType, parseMetricInput(draft.targetAmount).metricUnit)} of ${formatCampaignMetric(toNumberAmount(draft.targetAmount), parseMetricInput(draft.targetAmount).metricType, parseMetricInput(draft.targetAmount).metricUnit)}`,
+            inline: true
+          },
           { name: 'Impact', value: draft.beneficiaries || 'Not provided', inline: true },
           { name: 'Current Status', value: (session.campaign.status || 'active') === 'archived' ? 'Archived' : 'Active', inline: true }
         );
