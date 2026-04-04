@@ -1198,13 +1198,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
               .setCustomId('image_prompt')
               .setLabel('AI image prompt (optional)')
               .setStyle(TextInputStyle.Paragraph)
-              .setPlaceholder('Ex: Volunteers packing food boxes in a bright community center, documentary photography, natural light')
+              .setPlaceholder('Ex: Volunteers packing food boxes, documentary photo, natural light')
               .setRequired(false)
               .setMaxLength(500)
           )
         );
 
-      await interaction.showModal(modal);
+      try {
+        await interaction.showModal(modal);
+      } catch (err) {
+        console.error('blog category -> modal show failed:', err.message);
+        return await safeReply(interaction, '❌ Could not open the form. Please run !blog again.');
+      }
+      return;
     }
 
     // ───────────────────────────────────────────────────────────────────────────────
